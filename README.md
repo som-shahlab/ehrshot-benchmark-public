@@ -9,12 +9,97 @@ Please note that the dataset + model are still being reviewed, and a download li
 Whereas most prior EHR benchmarks are limited to the ICU setting, **EHRSHOT** contains the **full longitudinal health records of 6,739 patients from Stanford Medicine** and a diverse set of **15 classification tasks** tailored towards few-shot evaluation of pre-trained models. 
 
 # 📖 Table of Contents
-1. [Dataset + Tasks](#dataset)
-2. [Pre-trained Foundation Model](#models)
+1. [Pre-trained Foundation Model](#models)
+2. [Dataset + Tasks](#dataset)
 3. [Comparison to Prior Work](#prior_work)
 4. [Installation](#installation)
 5. [Usage](#usage)
 6. [Citation](#citation)
+
+<a name="models"/>
+
+# 🔮 Foundation Model for EHRs
+
+We publish the weights of **CLMBR-T-Base**, a **141 million parameter** clinical foundation model pre-trained on the deidentified structured EHR data of **2.57M patients** from Stanford Medicine.
+
+### Setup
+
+```python
+from transformers import AutoModel, AutoTokenizer
+import femr.models.transformer
+import femr.models.tokenizer
+import femr.models.dataloader
+
+# Random weight model (non-gated access, immediately available)
+tokenizer = femr.models.tokenizer.FEMRTokenizer.from_pretrained("StanfordShahLab/clmbr-t-base-random")
+batch_processor = femr.models.dataloader.FEMRBatchProcessor("StanfordShahLab/clmbr-t-base-random")
+model = femr.models.transformer.FEMRModel.from_pretrained("StanfordShahLab/clmbr-t-base-random")
+
+# Pretrained model (gated access, requires research usage agreement)
+tokenizer = femr.models.tokenizer.FEMRTokenizer.from_pretrained("StanfordShahLab/clmbr-t-base")
+batch_processor = femr.models.dataloader.FEMRBatchProcessor("StanfordShahLab/clmbr-t-base")
+model = femr.models.transformer.FEMRModel.from_pretrained("StanfordShahLab/clmbr-t-base")
+```
+
+Our pretrained CLMBR-T-Base model is [available at HuggingFace at this link.](https://huggingface.co/StanfordShahLab/clmbr-t-base-random). Access to this model is gated, so you will need to request access and fill out a research use agreement before you can get the model weights.
+
+For testing purposes, a non-gated model with random weights [is available on HuggingFace here](https://huggingface.co/StanfordShahLab/clmbr-t-base-random) and can be immediately downloaded by anyone.
+
+### Usage
+
+An example for how to run inference on a single patient using CLMBR-T-Base is shown below:
+
+```python
+import femr.models.transformer
+import torch
+import femr.models.tokenizer
+import femr.models.dataloader
+import datetime
+
+model_name = "StanfordShahLab/clmbr-t-base-random"
+
+# Load tokenizer / batch loader
+tokenizer = femr.models.tokenizer.FEMRTokenizer.from_pretrained(model_name)
+batch_processor = femr.models.dataloader.FEMRBatchProcessor(tokenizer)
+
+# Load model
+model = femr.models.transformer.FEMRModel.from_pretrained(model_name)
+
+# Create an example patient to run inference on
+example_patient = {
+    'patient_id': 30,
+    'events': [{
+        'time': datetime.datetime(2011, 5, 8),
+        'measurements': [
+            {'code': 'SNOMED/1'},
+        ],
+    },
+    {
+        'time': datetime.datetime(2012, 6, 9),
+        'measurements': [
+            {'code': 'SNOMED/30'},
+            {'code': 'SNOMED/103'}
+        ],
+    }]
+}
+batch = batch_processor.convert_patient(example_patient, tensor_type="pt")
+
+# Run model
+with torch.no_grad():
+    patient_ids, times, reprs = model(batch)
+    print(patient_ids)
+    print(times)
+    print(reprs)
+```
+
+### Prior Work
+
+We are [one of the first](https://arxiv.org/abs/2303.12961) to fully release such a model for coded EHR data; in contrast, most prior models released for clinical data  (e.g. GatorTron, ClinicalBERT) only work with unstructured text and cannot process the rich, structured data within an EHR. 
+
+
+### Model Architecture
+We use [Clinical Language-Model-Based Representations (CLMBR)](https://www.sciencedirect.com/science/article/pii/S1532046420302653) as our model architeceture. CLMBR is an autoregressive model designed to predict the next medical code in a patient's timeline given previous codes. CLMBR employs causally masked local attention, ensuring forward-only flow of information which is vital for prediction tasks and is in contrast to BERT-based models which are bidirectional in nature. We utilize a transformer as our base model with 141 million trainable parameters and a next code prediction objective, providing minute-level EHR resolution rather than the day-level aggregation of the original model formulation. 
+
 
 <a name="dataset"/>
 
@@ -51,18 +136,6 @@ Each task is a predictive classification task, and includes a canonical train/va
 | Chest X-Ray Findings | 14-way Multilabel | 24hrs before report is recorded       | Next report            |
 
 
-
-<a name="models"/>
-
-# 🔮 Foundation Model for EHRs
-
-**Please Note:** Model release is currently being reviewed and the download link will be updated once it is publicly available.
-
-We publish the model weights of a **141 million parameter** clinical foundation model pre-trained on the deidentified structured EHR data of **2.57M patients** from Stanford Medicine.
-
-We are [one of the first](https://arxiv.org/abs/2303.12961) to fully release such a model for coded EHR data; in contrast, most prior models released for clinical data  (e.g. GatorTron, ClinicalBERT) only work with unstructured text and cannot process the rich, structured data within an EHR.
-
-We use [Clinical Language-Model-Based Representations (CLMBR)](https://www.sciencedirect.com/science/article/pii/S1532046420302653) as our model. CLMBR is an autoregressive model designed to predict the next medical code in a patient's timeline given previous codes. CLMBR employs causally masked local attention, ensuring forward-only flow of information which is vital for prediction tasks and is in contrast to BERT-based models which are bidirectional in nature. We utilize a transformer as our base model with 141 million trainable parameters and a next code prediction objective, providing minute-level EHR resolution rather than the day-level aggregation of the original model formulation. 
 
 
 <a name="prior_work"/>
