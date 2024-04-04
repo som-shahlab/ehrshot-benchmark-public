@@ -136,7 +136,38 @@ Each task is a predictive classification task, and includes a canonical train/va
 | Chest X-Ray Findings | 14-way Multilabel | 24hrs before report is recorded       | Next report            |
 
 
+1. Download EHRSHOT to `[PATH_TO_SOURCE_OMOP]`
 
+2. Convert EHRSHOT => [MEDS data format](https://github.com/Medical-Event-Data-Standard/meds) using the following:
+
+```bash
+# Convert OMOP => MEDS data format
+meds_etl_omop [PATH_TO_SOURCE_OMOP] [PATH_TO_OUTPUT_MEDS]_raw
+
+# Apply some EHRSHOT-specific fixes
+femr_stanford_omop_fixer [PATH_TO_OUTPUT_MEDS]_raw [PATH_TO_OUTPUT_MEDS]
+```
+
+3. Use HuggingFace's [Datasets](https://huggingface.co/docs/datasets/en/index) library to load our dataset in Python
+
+```python
+import datasets
+dataset = datasets.Dataset.from_parquet(PATH_TO_OUTPUT_MEDS + 'data/*')
+
+# Print dataset stats
+print(dataset)
+>>> Dataset({
+>>>   features: ['patient_id', 'events'],
+>>>   num_rows: 6732
+>>> })
+
+# Print number of events in first patient in dataset
+print(len(dataset[0]['events']))
+>>> 2287
+```
+
+
+```
 
 <a name="prior_work"/>
 
