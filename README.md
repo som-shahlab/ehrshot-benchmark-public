@@ -109,7 +109,7 @@ We use [Clinical Language-Model-Based Representations (CLMBR)](https://www.scien
 
 The EHRSHOT (version 1) dataset contains:
 * **6,732 patients**
-* **41.6 million clinical events**
+* **43.2 million clinical events**
 * **921,499 visits**
 * **15 prediction tasks**
 
