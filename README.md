@@ -141,10 +141,10 @@ Each task is a predictive classification task, and includes a canonical train/va
 2. Convert EHRSHOT => [MEDS data format](https://github.com/Medical-Event-Data-Standard/meds) using the following:
 
 ```bash
-# Convert OMOP => MEDS data format
+# Convert OMOP => MEDS data format (takes ~5 min using 100 shards and 5 processes)
 meds_etl_omop [PATH_TO_SOURCE_OMOP] [PATH_TO_OUTPUT_MEDS]_raw
 
-# Apply some EHRSHOT-specific fixes
+# Apply some EHRSHOT-specific fixes (takes ~45 mins)
 femr_stanford_omop_fixer [PATH_TO_OUTPUT_MEDS]_raw [PATH_TO_OUTPUT_MEDS]
 ```
 
