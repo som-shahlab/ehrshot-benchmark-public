@@ -2,19 +2,71 @@
 
 A benchmark/dataset for few-shot evaluation of foundation models for electronic health records (EHRs). You can **[read the paper here](https://arxiv.org/abs/2307.02028)**. 
 
-Please note that the dataset + model are still being reviewed, and a download link will be provided once they are approved for public release.
-
 ----
 
 Whereas most prior EHR benchmarks are limited to the ICU setting, **EHRSHOT** contains the **full longitudinal health records of 6,732 patients from Stanford Medicine** and a diverse set of **15 classification tasks** tailored towards few-shot evaluation of pre-trained models. 
 
 # 📖 Table of Contents
-1. [Pre-trained Foundation Model](#models)
-2. [Dataset + Tasks](#dataset)
-3. [Comparison to Prior Work](#prior_work)
-4. [Installation](#installation)
+1. [Quick Start](#installation)
+2. [Pre-trained Foundation Model](#models)
+3. [Dataset + Tasks](#dataset)
+4. [Comparison to Prior Work](#prior_work)
 5. [Usage](#usage)
 6. [Citation](#citation)
+
+<a name="installation"/>
+
+# 💿 Quick Start
+
+**1) Code:** Install **EHRSHOT** repository.
+
+```bash
+conda create -n EHRSHOT_ENV python=3.10 -y
+conda activate EHRSHOT_ENV
+
+git clone https://github.com/som-shahlab/ehrshot-benchmark.git
+cd ehrshot-benchmark
+pip install -r requirements.txt
+```
+
+**2) Dataset:** Download **EHRSHOT** dataset (in MEDS format) [from Stanford Redivis here](https://redivis.com/datasets/bq26-13penagw7). You will need to fill out a data use agreement. Once you download the dataset, you can directly use HuggingFace's [Datasets](https://huggingface.co/docs/datasets/en/index) library to load it in Python:
+
+```python
+import datasets
+dataset = datasets.Dataset.from_parquet(PATH_TO_EHRSHOT + 'data/*.parquet')
+
+# Print dataset stats
+print(dataset)
+>>> Dataset({
+>>>   features: ['patient_id', 'events'],
+>>>   num_rows: 6732
+>>> })
+
+# Print number of events in first patient in dataset
+print(len(dataset[0]['events']))
+>>> 2287
+```
+
+**3) Model:** Download the **CLMBR-t-base Foundation Model** weights [from HuggingFace here](https://huggingface.co/StanfordShahLab/clmbr-t-base). You will need to fill out a data use agreement. 
+
+**4) Ontology:** Download the **OHDSI Ontology** used by EHRSHOT [from Stanford Redivis here](https://redivis.com/datasets/bq26-13penagw7). This is required for mapping medical codes to their parents/children. Note that this is a pickle dump of a `femr.ontology` object derived from the standard OMOP ontology.
+
+## Folder Structure
+
+Your final folder structure should look like this:
+
+- `ehrshot-benchmark/`
+  - `assets/`
+    - `labels/`
+      - *We provide this asset, which contains labels and few-shot samples for all our tasks.*
+    - `ehrshot-med-stanford/`
+      - *We provide this asset, which contains the EHRSHOT dataset in MEDS format.*
+    - `ontology.pkl`
+      - *We provide this asset, which contains the ontology used in EHRSHOT.*
+  - `ehrshot/`
+    - *We provide the scripts to run the benchmark here*
+
+
 
 <a name="models"/>
 
@@ -105,9 +157,15 @@ We use [Clinical Language-Model-Based Representations (CLMBR)](https://www.scien
 
 # 🗃️ Dataset + Tasks
 
-**Please Note:** Dataset release is currently being reviewed and the download link will be updated once it is publicly available.
+[Download the dataset from Stanford Redivis here.](https://redivis.com/datasets/bq26-13penagw7)
 
-The EHRSHOT (version 1) dataset contains:
+You will need to request access to the dataset and fill out a data use agreement before you can download it.
+
+The dataset is available in two formats:
+1. OMOP CDM v5 (Observational Medical Outcomes Partnership) - [See details here](https://ohdsi.github.io/CommonDataModel/cdm53.html)
+2. MEDS (Medical Event Data Standard) - [See details here](https://github.com/Medical-Event-Data-Standard)
+
+The dataset contains:
 * **6,732 patients**
 * **43.2 million clinical events**
 * **1,004,148 visits**
@@ -135,8 +193,9 @@ Each task is a predictive classification task, and includes a canonical train/va
 | Acute MI             | Binary            | 11:59pm on day of discharge           | 1 year post-discharge  |
 | Chest X-Ray Findings | 14-way Multilabel | 24hrs before report is recorded       | Next report            |
 
+For this repo, we use the MEDS format. To convert the dataset from OMOP to MEDS, you can use the following steps:
 
-1. Download EHRSHOT to `[PATH_TO_SOURCE_OMOP]`
+1. Download the OMOP version of EHRSHOT to `[PATH_TO_SOURCE_OMOP]`
 
 2. Convert EHRSHOT => [MEDS data format](https://github.com/Medical-Event-Data-Standard/meds) using the following:
 
@@ -148,11 +207,11 @@ meds_etl_omop [PATH_TO_SOURCE_OMOP] [PATH_TO_OUTPUT_MEDS]_raw
 femr_stanford_omop_fixer [PATH_TO_OUTPUT_MEDS]_raw [PATH_TO_OUTPUT_MEDS]
 ```
 
-3. Use HuggingFace's [Datasets](https://huggingface.co/docs/datasets/en/index) library to load our dataset in Python
+3. You can now directly use HuggingFace's [Datasets](https://huggingface.co/docs/datasets/en/index) library to load our dataset in Python:
 
 ```python
 import datasets
-dataset = datasets.Dataset.from_parquet(PATH_TO_OUTPUT_MEDS + 'data/*')
+dataset = datasets.Dataset.from_parquet(PATH_TO_EHRSHOT + 'data/*')
 
 # Print dataset stats
 print(dataset)
@@ -164,9 +223,6 @@ print(dataset)
 # Print number of events in first patient in dataset
 print(len(dataset[0]['events']))
 >>> 2287
-```
-
-
 ```
 
 <a name="prior_work"/>
@@ -196,88 +252,6 @@ In contrast, **EHRSHOT** contains (1) the full breadth of longitudinal data that
   <tr> <td><a href="https://www.sciencedirect.com/science/article/pii/S1532046419302564?via%3Dihub">Solares 2020</a></td> <td>CPRD</td> <td>✓</td> <td>✓</td> <td>4M</td> <td>2</td> <td>--</td> <td>--</td> <td>--</td> <td>--</td> </tr>
 </table>
 
-
-<a name="installation"/>
-
-# 💿 Installation
-
-Please use the following steps to create an environment for running the EHRSHOT benchmark.
-
-**1)**: Install **EHRSHOT**
-
-```bash
-conda create -n EHRSHOT_ENV python=3.10 -y
-conda activate EHRSHOT_ENV
-
-git clone https://github.com/som-shahlab/ehrshot-benchmark.git
-cd ehrshot-benchmark
-pip install -r requirements.txt
-```
-
-**2)**: Install **FEMR**
-
-For our data preprocessing pipeline we use **[FEMR  (Framework for Electronic Medical Records)](https://github.com/som-shahlab/femr)**, a Python package for building deep learning models with EHR data. 
-
-You must also have CUDA/cuDNN installed (we recommend CUDA 11.8 and cuDNN 8.7.0)
-
-Note that this currently only works on Linux machines.
-
-```bash
-pip install --upgrade "jax[cuda11_pip]==0.4.8" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-conda install bazel=6 -y
-pip install git+https://github.com/som-shahlab/femr.git@ehrshot_branch
-```
-
-## Download Private Assets
-
-You will need to separately download several assets that we cannot redistribute publicly on Github.
-
-This includes the dataset itself, the weights of the pre-trained foundation model we benchmark, and the Athena OHDSI Ontology. 
-
-### A) Dataset & Foundation Model for EHRs
-
-**Please Note:** Dataset + model release is currently being reviewed and the download link will be updated once it is publicly available.
-
-Once this is downloaded, unzip it to get a folder called `EHRSHOT_ASSETS/`. Please move this folder to the root of this repo.
-
-### B) Athena OHDSI Ontology
-
-Our pipeline requires the user to provide an ontology in order to map medical codes to their parents/children. We use the default Athena OHDSI Ontology for this. 
-
-Unfortunately, we cannot redistribute the Athena OHDSI Ontology ourselves, so you must separately download it by following these steps:
-
-1. Go to the [Athena website at this link](https://athena.ohdsi.org/vocabulary/list). You may need to create an account.
-2. Click the green "Download" button at the top right of the website
-3. Click the purple "Download Vocabularies" button below the green "Download" button
-4. Name the bundle "athena_download" and select 5.x version
-5. Scroll to the bottom of the list, and click the blue "Download" button
-6. It will take some time for the download to be ready. Please [refresh the webpage here](https://athena.ohdsi.org/vocabulary/download-history) to check whether your download is ready. Once the download is ready, click "Download"
-7. After the download is complete, unzip the file and move all the files into the `EHRSHOT_ASSETS/athena_download/` folder in your repo.
-
-After downloading the Athena OHDSI Ontology, you will have to separately download the CPT subset of the ontology. You can follow the instructions in the `readme.txt` in your Athena download, or follow the steps below:
-
-1. Create a [UMLS account here](https://uts.nlm.nih.gov/uts/signup-login)
-2. Get your [UMLS API key here](https://uts.nlm.nih.gov/uts/edit-profile)
-3. From the `EHRSHOT_ASSETS/athena_download/` folder, run this command: `bash cpt.sh <YOUR UMLS API KEY>`
-
-Your ontology will then be ready to go!
-
-## Folder Structure
-
-Your final folder structure should look like this:
-
-- `ehrshot-benchmark/`
-  - `EHRSHOT_ASSETS/`
-    - `data/`
-      - *We provide this asset, which contains deidentified EHR data as CSVs.*
-    - `benchmark/`
-      - *We provide this asset, which contains labels and few-shot samples for all our tasks.*
-    - `models`
-      - *We provide this asset, which contains our pretrained foundation model for EHRs.*
-    - `athena_download/`
-      - *You will need to download and put the Athena OHDSI Ontology inside this folder. Please follow the instructions above to download it.*
-  - `ehrshot/`
-    - *We provide the scripts to run the benchmark here*
 
 <a name="usage"/>
 

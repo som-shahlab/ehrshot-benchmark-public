@@ -24,85 +24,63 @@ TASKS=(
 )
 num_threads =  16
 
-# # ---------------------------------------Script 1---------------------------------------
-"""
-Convert the EHRSHOT cohort's CSV files into a FEMR database. 
-Read more about [FEMR here](https://github.com/som-shahlab/femr).
-
-Time: XXXXXX
-"""
-command = (
-    'python3 ehrshot/1_create_femr_database.py'
-    ' --path_to_input_dir EHRSHOT_ASSETS/data'
-    ' --path_to_output_dir EHRSHOT_ASSETS/femr'
-    ' --path_to_athena_download EHRSHOT_ASSETS/athena_download'
-    f' --num_threads {num_threads}'
-    ' --is_force_refresh'
-)
-print(command)
-os.system(command)
-
-
-# ---------------------------------------Script 2---------------------------------------
+# ---------------------------------------Script 1---------------------------------------
 """
 Use our labeling functions [defined here](https://github.com/som-shahlab/femr/blob/few_shot_ehr_benchmark/src/femr/labelers/benchmarks.py) 
 to generate labels for our dataset for our benchmark tasks.
+
+Correct?
+    - YES for all except Chexpert
 """
-os.makedirs("EHRSHOT_ASSETS/custom_benchmark", exist_ok=True)
 for task in TASKS:
     command = (
-        'python3 ehrshot/2_generate_labels.py'
-        ' --path_to_database EHRSHOT_ASSETS/femr/extract'
-        ' --path_to_labels_dir EHRSHOT_ASSETS/custom_benchmark'
-        ' --path_to_chexpert_csv EHRSHOT_ASSETS/benchmark/chexpert/chexpert_labeled_radiology_notes.csv'
-        f' --labeling_function {task}'
-        f' --num_threads {num_threads}'
+        'python3 ehrshot/1_run_labeler.py'
+        f' --labeler {task}'
     )
     print(command)
     os.system(command)
         
-# ---------------------------------------Script 3---------------------------------------
+# ---------------------------------------Script 2---------------------------------------
 """
 Consolidate all labels together to speed up feature generation process
+
+Correct?
+    - YES
 """
 command = (
-    'python3 ehrshot/3_consolidate_labels.py'
-    ' --path_to_labels_dir EHRSHOT_ASSETS/custom_benchmark'
-    ' --is_force_refresh'
+    'python3 ehrshot/2_consolidate_labels.py'
 )
 print(command)
 os.system(command)
 
 
-# ---------------------------------------Script 4---------------------------------------
+# ---------------------------------------Script 3---------------------------------------
 """
-Generate count-based feature representations
+Generate feature representations for count-based baselines
+
+Correct?
+    - TBD
 """
 
 os.makedirs("EHRSHOT_ASSETS/custom_features", exist_ok=True)
 command = (
-    'python3 ehrshot/4_generate_count_features.py'
-    '--path_to_database EHRSHOT_ASSETS/femr/extract'
-    '--path_to_labels_dir EHRSHOT_ASSETS/custom_benchmark'
-    '--path_to_features_dir EHRSHOT_ASSETS/custom_features'
+    'python3 ehrshot/3_generate_baseline_features.py'
     f' --num_threads {num_threads}'
-    f' --is_force_refresh'
 )
 print(command)
 os.system(command)
 
-# ---------------------------------------Script 5---------------------------------------
+# ---------------------------------------Script 4---------------------------------------
 """
 Generate CLMBR-T-base feature representations for the patients in our cohort.
 This step requires a GPU.
+
+Correct?
+    - TBD
 """
     
 command = (
     'python3 ehrshot/5_generate_clmbr_features.py'
-    ' --path_to_database EHRSHOT_ASSETS/femr/extract'
-    ' --path_to_labels_dir EHRSHOT_ASSETS/models/custom_benchmark'
-    ' --path_to_features_dir EHRSHOT_ASSETS/models/custom_features'
-    ' --path_to_models_dir EHRSHOT_ASSETS/models'
 )
 print(command)
 os.system(command)
@@ -112,6 +90,9 @@ os.system(command)
 Generate our k-shots for evaluation. 
 **Note**: We provide the k-shots we used with our data release. 
 Please do not run this script if you want to use the k-shots we used in our paper. 
+
+Correct?
+    - TBD
 """
 shot_strats = ["all"]
 num_replicates: int = 5
@@ -131,6 +112,9 @@ for task in TASKS:
 # ---------------------------------------Script 7---------------------------------------
 """
 Next, we train our baseline models and generate the metrics.
+
+Correct?
+    - TBD
 """
 shot_strats = ["all"]
 num_replicates: int = 5
@@ -153,6 +137,9 @@ for task in TASKS:
 # ---------------------------------------Script 8---------------------------------------
 """
 Generate plots included in the EHRSHOT paper.
+
+Correct?
+    - TBD
 """
 os.makedirs("EHRSHOT_ASSETS/figures", exist_ok=True)
 shot_strat: str = "all"
