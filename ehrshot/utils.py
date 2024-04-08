@@ -3,16 +3,13 @@ import pickle
 import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
+import meds
 import pandas as pd
 import numpy as np
-import datetime
-import torch.nn as nn
-from sklearn.metrics import pairwise_distances
+import datasets
 import femr
-from femr.labelers import LabeledPatients
-from femr.datasets import PatientDatabase
-import femr.extension.dataloader
 from loguru import logger
+from tqdm import tqdm
 
 # SPLITS
 SPLIT_SEED: int = 97
@@ -199,54 +196,45 @@ SCORE_MODEL_HEAD_2_COLOR = {
     },
 }
 
-def get_splits(database: PatientDatabase, 
-                patient_ids: np.ndarray, 
-                label_times: np.ndarray, 
-                label_values: np.ndarray) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray], Dict[str, np.ndarray]]:
-    """Return train/val/test splits for a given set of patients."""
-    train_pids_idx, val_pids_idx, test_pids_idx = get_patient_splits_by_idx(database, patient_ids)
-    patient_ids: Dict[str, np.ndarray] = {
-        'train' : patient_ids[train_pids_idx],
-        'val' : patient_ids[val_pids_idx],
-        'test' : patient_ids[test_pids_idx],
-    }
-    label_times: Dict[str, np.ndarray] = {
-        'train' : label_times[train_pids_idx],
-        'val' : label_times[val_pids_idx],
-        'test' : label_times[test_pids_idx],
+def split_labels(labels: List[meds.Label], path_to_split_csv: str) -> Tuple:
+    """Split labels into train/val/test sets."""
+    df_split = pd.read_csv(path_to_split_csv)
+    labels_split: Dict[str, meds.Label] = {
+        'train' : [ label for label in labels if label['patient_id'] in df_split[df_split['split'] == 'train']['omop_person_id'].values ],
+        'val' : [ label for label in labels if label['patient_id'] in df_split[df_split['split'] == 'val']['omop_person_id'].values ],
+        'test' : [ label for label in labels if label['patient_id'] in df_split[df_split['split'] == 'test']['omop_person_id'].values ],
     }
     label_values: Dict[str, np.ndarray] = {
-        'train' : label_values[train_pids_idx],
-        'val' : label_values[val_pids_idx],
-        'test' : label_values[val_pids_idx],
+        'train': np.array([ 1 if x['boolean_value'] else 0 for x in labels_split['train'] ] ),
+        'val': np.array([ 1 if x['boolean_value'] else 0 for x in labels_split['val'] ]),
+        'test': np.array([ 1 if x['boolean_value'] else 0 for x in labels_split['test'] ]),
     }
-    return patient_ids, label_values, label_times
+    patient_ids: Dict[str, np.ndarray] = {
+        'train': np.array([ x['patient_id'] for x in labels_split['train'] ]),
+        'val': np.array([ x['patient_id'] for x in labels_split['val'] ]),
+        'test': np.array([ x['patient_id'] for x in labels_split['test'] ]),
+    }
+    label_times: Dict[str, np.ndarray] = {
+        'train': np.array([ x['prediction_time'] for x in labels_split['train'] ]),
+        'val': np.array([ x['prediction_time'] for x in labels_split['val'] ]),
+        'test': np.array([ x['prediction_time'] for x in labels_split['test'] ]),
+    }
+    return labels_split, label_values, label_times, patient_ids
 
-def get_patient_splits_by_idx(database: PatientDatabase, patient_ids: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Given a list of patient IDs, split into train, val, and test sets.
-        Returns the idxs for each split within `patient_ids`."""
-    hashed_pids: np.ndarray = np.array([ database.compute_split(SPLIT_SEED, pid) for pid in patient_ids ])
-    train: np.ndarray = np.where(hashed_pids < SPLIT_TRAIN_CUTOFF)[0]
-    val: np.ndarray = np.where((SPLIT_TRAIN_CUTOFF <= hashed_pids) & (hashed_pids < SPLIT_VAL_CUTOFF))[0]
-    test: np.ndarray = np.where(hashed_pids >= SPLIT_VAL_CUTOFF)[0]
-    return (train, val, test)
 
-def get_labels_and_features(labeled_patients: LabeledPatients, path_to_features_dir: Optional[str]) -> Tuple[List[int], List[datetime.datetime], List[int], Dict[str, np.ndarray]]:
+def get_labels_and_features(labels: List[meds.Label], path_to_features_dir: Optional[str]) -> List[meds.Label]:
     """Given a path to a directory containing labels and features as well as a LabeledPatients object, returns
         the labels and features for each patient. Note that this function is more complex b/c we need to align
         the labels with their corresponding features based on their prediction times."""
-    label_patient_ids, label_values, label_times = labeled_patients.as_numpy_arrays()
-    label_times = label_times.astype("datetime64[us]")
-
     # Sort arrays by (1) patient ID and (2) label time
-    sort_order: np.ndarray = np.lexsort((label_times, label_patient_ids))
-    label_patient_ids, label_values, label_times = label_patient_ids[sort_order], label_values[sort_order], label_times[sort_order]
+    labels = sorted(labels, key=lambda x: (x.patient_id, x.prediction_time))
 
     # Just return labels, ignore features
     if path_to_features_dir is None:
-        return label_patient_ids, label_values, label_times
+        return labels
 
-    # Go through every featurization we've created (e.g. count, clmbr, motor)
+    # TODO - check rest of this
+    # Go through every featurization we've created (e.g. count, clmbr)
     # and align the label times with the featurization times
     featurizations: Dict[str, np.ndarray] = {}
     for model in BASE_MODELS:
@@ -285,20 +273,21 @@ def get_labels_and_features(labeled_patients: LabeledPatients, path_to_features_
     
     return label_patient_ids, label_values, label_times, featurizations
 
-def process_chexpert_labels(label_values):
-    new_labels = []
-    for label_value in label_values:
-        label_str = bin(label_value)[2:]
+def process_chexpert_labels(labels: List[meds.Label]) -> List[meds.Label]:
+    for label in labels:
+        label_str = bin(label['categorical_value'])[2:]
         rem_bin = 14 - len(label_str)
         label_str = "0"*rem_bin + label_str
         label_list = [*label_str]
         label_list = [int(label) for label in label_list]
-        new_labels.append(label_list)
-    return np.array(new_labels)
+        label['boolean_value'] = label_list # ! Hacky, but MEDS doesn't support list values
+    return labels
 
-def convert_multiclass_to_binary_labels(values, threshold: int = 1):
-    values[values >= threshold] = 1
-    return values
+def convert_multiclass_to_binary_labels(labels: List[meds.Label], threshold: int = 1) -> List[meds.Label]:
+    for label in labels:
+        label['boolean_value'] = label['integer_value'] >= threshold
+        del label['integer_value']
+    return labels
 
 def check_file_existence_and_handle_force_refresh(path_to_file_or_dir: str, is_force_refresh: bool):
     """Checks if file/folder exists. If it does, deletes it if `is_force_refresh` is True."""
@@ -357,43 +346,6 @@ def filter_df(df: pd.DataFrame,
         df = df[mask]
     return df
 
-class ProtoNetCLMBRClassifier(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def fit(self, X_train, y_train):
-        # (n_patients, clmbr_embedding_size)
-        n_classes = len(set(y_train))
-        
-        # (n_classes, clmbr_embedding_size)
-        self.prototypes = np.zeros((n_classes, X_train.shape[1]))
-        for cls in range(n_classes):
-            indices = np.nonzero(y_train == cls)[0]
-            examples = X_train[indices]
-            self.prototypes[cls, :] = np.mean(examples, axis=0)
-
-    def predict_proba(self, X_test):
-        # (n_patients, clmbr_embedding_size)    
-        dists = pairwise_distances(X_test, self.prototypes, metric='euclidean')
-        # Negate distance values
-        neg_dists = -dists
-
-        # Apply softmax function to convert distances to probabilities
-        probabilities = np.exp(neg_dists) / np.sum(np.exp(neg_dists), axis=1, keepdims=True)
-
-        return probabilities
-
-    def predict(self, X_train):
-        dists = self.predict_proba(X_train)
-        predictions = np.argmax(dists, axis=1)
-        return predictions
-    
-    def save_model(self, model_save_dir, model_name):
-        if not os.path.exists(model_save_dir):
-            os.makedirs(model_save_dir, exist_ok = True)
-        np.save(self.prototypes, os.path.join(model_save_dir, f'{model_name}.npy'))
-
-
 def write_table_to_latex(df: pd.DataFrame, path_to_file: str, is_ignore_index: bool = False):
     with open(path_to_file, 'a') as f:
         latex = df.to_latex(index=not is_ignore_index, escape=True)
@@ -405,3 +357,37 @@ def write_table_to_latex(df: pd.DataFrame, path_to_file: str, is_ignore_index: b
         f.write("\n")
         f.write("=======================================\n")
         f.write("=======================================\n")
+
+def get_rel_path(file: str, rel_path: str) -> str:
+    """Transforms a relative path from a specific file in the package `eclair/src/eclair/ into an absolute path"""
+    return os.path.abspath(
+        os.path.join(os.path.dirname(os.path.abspath(file)), rel_path)
+    )
+
+def convert_csv_labels_to_meds(path_to_labels_csv: str, is_force_refresh: bool = False) -> List[meds.Label]:
+    dir_name: str = os.path.dirname(path_to_labels_csv)
+    base_name: str = os.path.basename(path_to_labels_csv).replace(".csv", "")
+    
+    # Load cached labels if they exist
+    path_to_cache: str = os.path.join(dir_name, f'{base_name}_meds.pkl')
+    if not is_force_refresh and os.path.exists(path_to_cache):
+        logger.info(f"Loading cached labels from `{path_to_cache}`")
+        with open(path_to_cache, 'rb') as f:
+            return pickle.load(f)
+    else:
+        logger.info(f"No cached labels found at `{path_to_cache}`. Generating labels from CSV file.")
+    
+    df_labels = pd.read_csv(path_to_labels_csv)
+    df_labels['prediction_time'] = pd.to_datetime(df_labels['prediction_time'])
+    # Conver to list of MEDS labels
+    labels: List[meds.Label] = [
+        meds.Label(
+            patient_id=row['patient_id'],
+            prediction_time=row['prediction_time'],
+            boolean_value=row['boolean_value'],
+        )
+        for _, row in tqdm(df_labels.iterrows(), desc='Converting labels to MEDS format', total=df_labels.shape[0])
+    ]
+    pickle.dump(labels, open(path_to_cache, 'wb'))
+
+    return labels

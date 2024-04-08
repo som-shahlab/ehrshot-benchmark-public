@@ -4,9 +4,11 @@
 """
 
 import argparse
+import datasets
 import json
 import os
 from typing import Any, Dict, List, Optional, Tuple, Union
+import meds
 import numpy as np
 import pandas as pd
 from sklearn import metrics
@@ -19,22 +21,26 @@ from utils import (
     SHOT_STRATS,
     BASE_MODELS,
     BASE_MODEL_2_HEADS,
-    get_labels_and_features, 
+    convert_csv_labels_to_meds,
+    get_labels_and_features,
+    get_rel_path, 
     process_chexpert_labels, 
     convert_multiclass_to_binary_labels,
     CHEXPERT_LABELS, 
     LR_PARAMS, 
     XGB_PARAMS, 
     RF_PARAMS,
+    get_patient_splits_by_idx,
+    split_labels
+)
+from models import (
     ProtoNetCLMBRClassifier, 
-    get_patient_splits_by_idx
 )
 from sklearn.model_selection import GridSearchCV, PredefinedSplit
 from scipy.sparse import issparse
 import scipy
 import lightgbm as lgb
 import femr
-import femr.datasets
 import femr.models.conjugate_gradient
 from femr.labelers import load_labeled_patients, LabeledPatients
 
@@ -172,60 +178,67 @@ def run_evaluation(X_train: np.ndarray,
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run EHRSHOT evaluation benchmark on a specific task.")
-    parser.add_argument("--path_to_database", required=True, type=str, help="Path to FEMR patient database")
-    parser.add_argument("--path_to_labels_dir", required=True, type=str, help="Path to directory containing saved labels")
+    parser.add_argument("--path_to_dataset", default=get_rel_path(__file__, "../assets/ehrshot-meds-stanford/"), type=str, help="Path to MEDS formatted version of EHRSHOT")
+    parser.add_argument("--path_to_labels_dir", default=get_rel_path(__file__, "../assets/labels/"), type=str, help="Path to directory containing saved labels")
+    parser.add_argument("--path_to_splits_csv", default=get_rel_path(__file__, "../assets/splits.csv"), type=str, help="Path to patient train/val/test split CSV")
     parser.add_argument("--path_to_features_dir", required=True, type=str, help="Path to directory containing saved features")
     parser.add_argument("--path_to_output_dir", required=True, type=str, help="Path to directory where results will be saved")
+    parser.add_argument("--labeler", required=True, type=str, help="Labeling function for which we will create k-shot samples.", choices=LABELING_FUNCTIONS, )
     parser.add_argument("--shot_strat", type=str, choices=SHOT_STRATS.keys(), help="What type of X-shot evaluation we are interested in.", required=True )
-    parser.add_argument("--labeling_function", required=True, type=str, help="Labeling function for which we will create k-shot samples.", choices=LABELING_FUNCTIONS, )
     parser.add_argument("--num_threads", type=int, help="Number of threads to use")
-    parser.add_argument("--is_force_refresh", action='store_true', default=False, help="If set, then overwrite all outputs")
     return parser.parse_args()
 
 if __name__ == "__main__":
     args = parse_args()
-    LABELING_FUNCTION: str = args.labeling_function
-    SHOT_STRAT: str = args.shot_strat
-    NUM_THREADS: int = args.num_threads
-    IS_FORCE_REFRESH: bool = args.is_force_refresh
-    PATH_TO_DATABASE: str = args.path_to_database
-    PATH_TO_FEATURES_DIR: str = args.path_to_features_dir
-    PATH_TO_LABELS_DIR: str = args.path_to_labels_dir
-    PATH_TO_LABELED_PATIENTS: str = os.path.join(PATH_TO_LABELS_DIR, LABELING_FUNCTION, 'labeled_patients.csv')
-    PATH_TO_SHOTS: str = os.path.join(PATH_TO_LABELS_DIR, LABELING_FUNCTION, f"{SHOT_STRAT}_shots_data.json")
-    PATH_TO_OUTPUT_DIR: str = args.path_to_output_dir
-    PATH_TO_OUTPUT_FILE: str = os.path.join(PATH_TO_OUTPUT_DIR, LABELING_FUNCTION, f'{SHOT_STRAT}_results.csv')
-    os.makedirs(os.path.dirname(PATH_TO_OUTPUT_FILE), exist_ok=True)
+    path_to_dataset: str = os.path.join(args.path_to_dataset, 'data/*.parquet')
+    labeler: str = args.labeler
+    path_to_labels_dir: str = args.path_to_labels_dir
+    path_to_splits_csv: str = args.path_to_splits_csv
+    path_to_output_dir: str = args.path_to_output_dir
+    path_to_features_dir: str = args.path_to_features_dir
+    shot_strat: str = args.shot_strat
+    n_replicates: int = args.n_replicates
+    path_to_labels_csv: str = os.path.join(path_to_labels_dir, f"{labeler}_labels.csv")
+    path_to_shots: str = os.path.join(path_to_labels_dir, labeler, f"{shot_strat}_shots_data.json")
+    path_to_output_file: str = os.path.join(path_to_output_dir, labeler, f'{shot_strat}_results.csv')
+    is_force_refresh: bool = args.is_force_refresh
+    os.makedirs(os.path.dirname(path_to_output_dir), exist_ok=True)
+    
+    assert os.path.exists(args.path_to_dataset), f"Path to dataset does not exist: {args.path_to_dataset}"
+    assert os.path.exists(path_to_labels_csv), f"Path to labels CSV does not exist: {path_to_labels_csv}"
+    assert os.path.exists(path_to_splits_csv), f"Path to splits CSV does not exist: {path_to_splits_csv}"
+    assert os.path.exists(path_to_shots), f"Path to shots JSON does not exist: {path_to_shots}"
+    assert os.path.exists(path_to_features_dir), f"Path to features directory does not exist: {path_to_features_dir}"
     
     # If results already exist, then append new results to existing file
     df_existing: Optional[pd.DataFrame] = None
-    if os.path.exists(PATH_TO_OUTPUT_FILE):
-        logger.warning(f"Results already exist @ `{PATH_TO_OUTPUT_FILE}`.")
-        df_existing = pd.read_csv(PATH_TO_OUTPUT_FILE)
+    if os.path.exists(path_to_output_file):
+        logger.warning(f"Results already exist @ `{path_to_output_file}`.")
+        df_existing = pd.read_csv(path_to_output_file)
 
-    # Load FEMR Patient Database
-    database = femr.datasets.PatientDatabase(PATH_TO_DATABASE)
+    # Load EHRSHOT dataset
+    dataset = datasets.Dataset.from_parquet(path_to_dataset)
 
     # Load labels for this task
-    labeled_patients: LabeledPatients = load_labeled_patients(PATH_TO_LABELED_PATIENTS)
-    patient_ids, label_values, label_times, feature_matrixes = get_labels_and_features(labeled_patients, PATH_TO_FEATURES_DIR)
-    train_pids_idx, val_pids_idx, test_pids_idx = get_patient_splits_by_idx(database, patient_ids)
+    labels: List[meds.Label] = convert_csv_labels_to_meds(path_to_labels_csv)
+    labels_split, label_values, label_times, patient_ids = split_labels(labels, path_to_splits_csv)
+    feature_matrixes = get_labels_and_features(labels, path_to_features_dir)
 
     # Load shot assignments for this task
-    with open(PATH_TO_SHOTS) as f:
+    with open(path_to_shots) as f:
         few_shots_dict: Dict[str, Dict] = json.load(f)
 
     # Preprocess certain non-binary labels
-    if LABELING_FUNCTION == "chexpert":
+    if labeler == "chexpert":
         label_values = process_chexpert_labels(label_values)
         sub_tasks: List[str] = CHEXPERT_LABELS
-    elif LABELING_FUNCTION.startswith('lab_'):
+    elif labeler.startswith('lab_'):
        # Lab value is multi-class, convert to binary
         label_values = convert_multiclass_to_binary_labels(label_values, threshold=1)
-        sub_tasks: List[str] = [LABELING_FUNCTION]
+        sub_tasks: List[str] = [labeler]
     else:
         # Binary classification
-        sub_tasks: List[str] = [LABELING_FUNCTION]
+        sub_tasks: List[str] = [labeler]
         
     # Results will be stored as a CSV with columns:
     #   sub_task, model, head, replicate, score_name, score_value, k
@@ -250,22 +263,22 @@ if __name__ == "__main__":
                 # Check if results already exist for this model/head/shot_strat in `results.csv`
                 if df_existing is not None:
                     existing_rows: pd.DataFrame = df_existing[
-                        (df_existing['labeling_function'] == LABELING_FUNCTION) 
+                        (df_existing['labeler'] == labeler) 
                         & (df_existing['sub_task'] == sub_task) 
                         & (df_existing['model'] == model) 
                         & (df_existing['head'] == head)
                     ]
                     if existing_rows.shape[0] > 0:
                         # Overwrite
-                        if IS_FORCE_REFRESH:
-                            logger.warning(f"Results ALREADY exist for {model}/{head}:{LABELING_FUNCTION}/{sub_task} in `results.csv`. Overwriting these rows because `is_force_refresh` is TRUE.")
+                        if is_force_refresh:
+                            logger.warning(f"Results ALREADY exist for {model}/{head}:{labeler}/{sub_task} in `results.csv`. Overwriting these rows because `is_force_refresh` is TRUE.")
                         else:
-                            logger.warning(f"Results ALREADY exist for {model}/{head}:{LABELING_FUNCTION}/{sub_task} in `results.csv`. Skipping this combination because `is_force_refresh` is FALSE.")
+                            logger.warning(f"Results ALREADY exist for {model}/{head}:{labeler}/{sub_task} in `results.csv`. Skipping this combination because `is_force_refresh` is FALSE.")
                             results += existing_rows.to_dict(orient='records')
                             continue
                     else:
                         # Append
-                        logger.warning(f"Results DO NOT exist for {model}/{head}:{LABELING_FUNCTION}/{sub_task} in `results.csv`. Appending to this CSV.")
+                        logger.warning(f"Results DO NOT exist for {model}/{head}:{labeler}/{sub_task} in `results.csv`. Appending to this CSV.")
         
                 ks: List[int] = sorted([ int(x) for x in few_shots_dict[sub_task].keys() ])
                 
@@ -286,7 +299,7 @@ if __name__ == "__main__":
                         y_test_k: np.ndarray = np.array(y_test)
 
                         # CheXpert adjustment
-                        if LABELING_FUNCTION == 'chexpert':
+                        if labeler == 'chexpert':
                             y_test_k = y_test[:, sub_task_idx]
 
                         # Fit model with hyperparameter tuning
@@ -295,7 +308,7 @@ if __name__ == "__main__":
                         # Save results
                         for score_name, score_value in scores.items():
                             results.append({
-                                'labeling_function' : LABELING_FUNCTION,
+                                'labeler' : labeler,
                                 'sub_task' : sub_task,
                                 'model' : model,
                                 'head' : head,
@@ -305,8 +318,8 @@ if __name__ == "__main__":
                                 'value' : score_value,
                             })
 
-    logger.info(f"Saving results to: {PATH_TO_OUTPUT_FILE}")
+    logger.info(f"Saving results to: {path_to_output_file}")
     df: pd.DataFrame = pd.DataFrame(results)
     logger.info(f"Added {df.shape[0] - (df_existing.shape[0] if df_existing is not None else 0)} rows")
-    df.to_csv(PATH_TO_OUTPUT_FILE)
+    df.to_csv(path_to_output_file)
     logger.success("Done!")

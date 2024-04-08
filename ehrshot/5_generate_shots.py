@@ -1,4 +1,4 @@
-"""Create a file at `PATH_TO_LABELS_AND_FEATS_DIR/LABELING_FUNCTION/{SHOT_STRAT}_shots_data.json` containing:
+"""Create a file at `PATH_TO_LABELS_AND_FEATS_DIR/labeler/{shot_strat}_shots_data.json` containing:
 
 Output:
     few_shots_dict = {
@@ -27,19 +27,21 @@ import datetime
 import json
 import os
 from typing import Dict, List, Union
+import meds
 import numpy as np
 from loguru import logger
 from utils import (
     LABELING_FUNCTIONS, 
     CHEXPERT_LABELS, 
     SHOT_STRATS,
-    get_labels_and_features, 
+    convert_csv_labels_to_meds,
+    get_labels_and_features,
+    get_rel_path, 
     process_chexpert_labels, 
     convert_multiclass_to_binary_labels,
-    get_splits
+    split_labels
 )
-import femr.datasets
-from femr.labelers import LabeledPatients, load_labeled_patients
+import datasets
 
 def get_k_samples(y: List[int], k: int, max_k: int, is_preserve_prevalence: bool = False, seed=0) -> List[int]:
     """_summary_
@@ -111,84 +113,89 @@ def generate_shots(k: int,
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate few-shot data for eval")
-    parser.add_argument("--path_to_database", required=True, type=str, help="Path to FEMR patient database")
-    parser.add_argument("--path_to_labels_dir", required=True, type=str, help="Path to directory containing saved labels")
-    parser.add_argument("--labeling_function", required=True, type=str, help="Labeling function for which we will create k-shot samples.", choices=LABELING_FUNCTIONS, )
+    parser.add_argument("--path_to_dataset", default=get_rel_path(__file__, "../assets/ehrshot-meds-stanford/"), type=str, help="Path to MEDS formatted version of EHRSHOT")
+    parser.add_argument("--path_to_labels_dir", default=get_rel_path(__file__, "../assets/labels/"), type=str, help="Path to directory containing saved labels")
+    parser.add_argument("--path_to_splits_csv", default=get_rel_path(__file__, "../assets/splits.csv"), type=str, help="Path to patient train/val/test split CSV")
+    parser.add_argument("--labeler", required=True, type=str, help="Labeling function for which we will create k-shot samples.", choices=LABELING_FUNCTIONS, )
     parser.add_argument("--shot_strat", type=str, choices=SHOT_STRATS.keys(), help="What type of X-shot evaluation we are interested in.", required=True )
     parser.add_argument("--n_replicates", type=int, help="Number of replicates to run for each `k`. Useful for creating std bars in plots", default=3, )
     return parser.parse_args()
 
 if __name__ == "__main__":
     args = parse_args()
-    LABELING_FUNCTION: str = args.labeling_function
-    SHOT_STRAT: str = args.shot_strat
-    N_REPLICATES: int = args.n_replicates
-    PATH_TO_DATABASE: str = args.path_to_database
-    PATH_TO_LABELS_DIR: str = args.path_to_labels_dir
-    PATH_TO_LABELED_PATIENTS: str = os.path.join(PATH_TO_LABELS_DIR, LABELING_FUNCTION, 'labeled_patients.csv')
-    PATH_TO_OUTPUT_FILE: str = os.path.join(PATH_TO_LABELS_DIR, LABELING_FUNCTION, f"{SHOT_STRAT}_shots_data.json")
+    path_to_dataset: str = os.path.join(args.path_to_dataset, 'data/*.parquet')
+    labeler: str = args.labeler
+    path_to_labels_dir: str = args.path_to_labels_dir
+    path_to_splits_csv: str = args.path_to_splits_csv
+    shot_strat: str = args.shot_strat
+    n_replicates: int = args.n_replicates
+    path_to_labels_csv: str = os.path.join(path_to_labels_dir, f"{labeler}_labels.csv")
+    path_to_output_file: str = os.path.join(path_to_labels_dir, labeler, f"{shot_strat}_shots_data.json")
+    
+    assert os.path.exists(args.path_to_dataset), f"Path to dataset does not exist: {args.path_to_dataset}"
+    assert os.path.exists(path_to_labels_csv), f"Path to labels CSV does not exist: {path_to_labels_csv}"
+    assert os.path.exists(path_to_splits_csv), f"Path to splits CSV does not exist: {path_to_splits_csv}"
 
-    # Load PatientDatabase
-    database = femr.datasets.PatientDatabase(PATH_TO_DATABASE)
+    # Load EHRSHOT dataset
+    dataset = datasets.Dataset.from_parquet(path_to_dataset)
 
     # Few v. long shot
-    if SHOT_STRAT in SHOT_STRATS:
-        SHOTS: List[int] = SHOT_STRATS[SHOT_STRAT]
+    if shot_strat in SHOT_STRATS:
+        SHOTS: List[int] = SHOT_STRATS[shot_strat]
     else:
-        raise ValueError(f"Invalid `shot_strat`: {SHOT_STRAT}")
+        raise ValueError(f"Invalid `shot_strat`: {shot_strat}")
 
     # Load labels for this task
-    labeled_patients: LabeledPatients = load_labeled_patients(PATH_TO_LABELED_PATIENTS)
-    patient_ids, label_values, label_times = get_labels_and_features(labeled_patients, None)
-
-    if LABELING_FUNCTION == "chexpert":
+    labels: List[meds.Label] = convert_csv_labels_to_meds(path_to_labels_csv)
+    
+    if labeler == "chexpert":
         # CheXpert is multilabel, convert to binary for EHRSHOT
-        label_values = process_chexpert_labels(label_values)
-    elif LABELING_FUNCTION.startswith('lab_'):
+        labels = process_chexpert_labels(labels)
+    elif labeler.startswith('lab_'):
         # Lab values is multiclass, convert to binary for EHRSHOT
-        label_values = convert_multiclass_to_binary_labels(label_values, threshold=1)
+        labels = convert_multiclass_to_binary_labels(labels, threshold=1)
 
     # Train/val/test splits
-    patient_ids, label_values, label_times = get_splits(database, patient_ids, label_times, label_values)
+    labels_split, label_values, label_times, patient_ids = split_labels(labels, path_to_splits_csv)
     logger.info(f"Train prevalence: {np.sum(label_values['train'] != 0) / label_values['train'].size}")
     logger.info(f"Val prevalence: {np.sum(label_values['val'] != 0) / label_values['val'].size}")
     logger.info(f"Test prevalence: {np.sum(label_values['test'] != 0) / label_values['test'].size}")
 
-    if LABELING_FUNCTION == 'chexpert':
+    if labeler == 'chexpert':
         # Multilabel -- create one task per class
         sub_tasks: List[str] = CHEXPERT_LABELS
     else:
         # Binary classification
-        sub_tasks: List[str] = [LABELING_FUNCTION]
+        sub_tasks: List[str] = [labeler]
     
     # Create shots
     few_shots_dict: Dict[str, Dict] = collections.defaultdict(dict)
     for idx, sub_task in enumerate(sub_tasks):
         few_shots_dict[sub_task]: Dict[int, Dict[int, Dict]] = collections.defaultdict(dict)
         # Get ground truth labels
-        if LABELING_FUNCTION == 'chexpert':
+        if labeler == 'chexpert':
             y_train, y_val = label_values['train'][:, idx], label_values['val'][:, idx]
         else:
             y_train, y_val = label_values['train'], label_values['val']
         # Create a sample for each k, for each replicate
         for k in SHOTS:
-            for replicate in range(N_REPLICATES):
+            for replicate in range(n_replicates):
                 if k == -1 and replicate > 0:
                     # Only need one copy of `all` dataset (for speed)
                     continue
                 logger.critical(f"Label: {sub_task} | k: {k} | Replicate: {replicate}")
                 shot_dict: Dict[str, List[Union[int, str]]] = generate_shots(k, 
-                                                                                max_k=max(SHOTS), 
-                                                                                y_train=y_train, 
-                                                                                y_val=y_val, 
-                                                                                patient_ids=patient_ids, 
-                                                                                label_times=label_times, 
-                                                                                seed=replicate)
+                                                                            max_k=max(SHOTS), 
+                                                                            y_train=y_train, 
+                                                                            y_val=y_val, 
+                                                                            patient_ids=patient_ids, 
+                                                                            label_times=label_times, 
+                                                                            seed=replicate)
                 few_shots_dict[sub_task][k][replicate] = shot_dict
     
     # Save patients selected for each shot
-    logger.info(f"Saving few shot data to: {PATH_TO_OUTPUT_FILE}")
-    with open(PATH_TO_OUTPUT_FILE, 'w') as f:
+    logger.info(f"Saving few shot data to: {path_to_output_file}")
+    with open(path_to_output_file, 'w') as f:
         json.dump(few_shots_dict, f)
-    logger.success(f"Done with {LABELING_FUNCTION}!")
+    logger.success(f"Done with {labeler}!")
     
