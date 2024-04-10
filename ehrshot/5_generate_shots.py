@@ -101,8 +101,8 @@ def generate_shots(k: int,
     shot_dict: Dict[str, List[Union[int, str]]] = {
         "patient_ids_train_k": patient_ids['train'][train_idxs_k].tolist(),
         "patient_ids_val_k": patient_ids['val'][val_idxs_k].tolist(),
-        "label_times_train_k": [ label_time.astype(datetime.datetime).isoformat() for label_time in label_times['train'][train_idxs_k] ], 
-        "label_times_val_k": [ label_time.astype(datetime.datetime).isoformat() for label_time in label_times['val'][val_idxs_k] ], 
+        "label_times_train_k": [ label_time.astype('datetime64[s]').astype(str) for label_time in label_times['train'][train_idxs_k] ], 
+        "label_times_val_k": [ label_time.astype('datetime64[s]').astype(str) for label_time in label_times['val'][val_idxs_k] ], 
         'label_values_train_k': y_train[train_idxs_k].tolist(),
         'label_values_val_k': y_val[val_idxs_k].tolist(),
         "train_idxs": train_idxs_k,
@@ -131,7 +131,8 @@ if __name__ == "__main__":
     n_replicates: int = args.n_replicates
     path_to_labels_csv: str = os.path.join(path_to_labels_dir, f"{labeler}_labels.csv")
     path_to_output_file: str = os.path.join(path_to_labels_dir, labeler, f"{shot_strat}_shots_data.json")
-    
+    os.makedirs(os.path.dirname(path_to_output_file), exist_ok=True)
+
     assert os.path.exists(args.path_to_dataset), f"Path to dataset does not exist: {args.path_to_dataset}"
     assert os.path.exists(path_to_labels_csv), f"Path to labels CSV does not exist: {path_to_labels_csv}"
     assert os.path.exists(path_to_splits_csv), f"Path to splits CSV does not exist: {path_to_splits_csv}"

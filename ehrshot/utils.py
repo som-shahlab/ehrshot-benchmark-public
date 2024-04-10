@@ -215,9 +215,9 @@ def split_labels(labels: List[meds.Label], path_to_split_csv: str) -> Tuple:
         'test': np.array([ x['patient_id'] for x in labels_split['test'] ]),
     }
     label_times: Dict[str, np.ndarray] = {
-        'train': np.array([ x['prediction_time'] for x in labels_split['train'] ]),
-        'val': np.array([ x['prediction_time'] for x in labels_split['val'] ]),
-        'test': np.array([ x['prediction_time'] for x in labels_split['test'] ]),
+        'train': np.array([ x['prediction_time'].to_numpy() for x in labels_split['train'] ]),
+        'val': np.array([ x['prediction_time'].to_numpy() for x in labels_split['val'] ]),
+        'test': np.array([ x['prediction_time'].to_numpy() for x in labels_split['test'] ]),
     }
     return labels_split, label_values, label_times, patient_ids
 
@@ -385,6 +385,9 @@ def convert_csv_labels_to_meds(path_to_labels_csv: str, is_force_refresh: bool =
             patient_id=row['patient_id'],
             prediction_time=row['prediction_time'],
             boolean_value=row['boolean_value'],
+            integer_value=row['integer_value'],
+            categorical_value=row['categorical_value'],
+            float_value=row['float_value'],
         )
         for _, row in tqdm(df_labels.iterrows(), desc='Converting labels to MEDS format', total=df_labels.shape[0])
     ]
