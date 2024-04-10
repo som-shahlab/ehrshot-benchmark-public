@@ -21,8 +21,12 @@ Whereas most prior EHR benchmarks are limited to the ICU setting, **EHRSHOT** co
 **1) Code:** Install **EHRSHOT** repository.
 
 ```bash
-conda create -n EHRSHOT_ENV python=3.10 -y
-conda activate EHRSHOT_ENV
+conda create -n ehrshot python=3.10 -y
+conda activate ehrshot
+
+# TODO - remove: conda activate /local-scratch-nvme/nigam/ehrshot
+
+conda create -n /local-scratch-nvme/nigam/ehrshot python=3.10 -y
 
 git clone https://github.com/som-shahlab/ehrshot-benchmark.git
 cd ehrshot-benchmark
