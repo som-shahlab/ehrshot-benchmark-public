@@ -42,22 +42,26 @@ from scipy.sparse import issparse
 import scipy
 import lightgbm as lgb
 
-'''
-python3 7_eval.py \
-    --path_to_database '../EHRSHOT_ASSETS/femr/extract' \
-    --path_to_labels_dir '../EHRSHOT_ASSETS/custom_benchmark' \
-    --path_to_features_dir '../EHRSHOT_ASSETS/custom_hf_features' \
-    --path_to_output_dir '../EHRSHOT_ASSETS/results_hf' \
-    --labeling_function 'guo_icu' \
-    --shot_strat 'all' \
-    --num_threads 20
-'''
+# TODO - remove
+XGB_PARAMS = {
+    'max_depth': [3,],
+    'learning_rate': [ 0.1, ],
+    'num_leaves' : [25, 100],
+}
+RF_PARAMS = {
+    'n_estimators': [20, 100,],
+    'max_depth' : [5, 10, ],
+}
+LR_PARAMS = {
+    "C": [1e-2,], 
+    "penalty": ['l2']
+}
 
 def tune_hyperparams(X_train: np.ndarray, X_val: np.ndarray, y_train: np.ndarray, y_val: np.ndarray, model, param_grid: Dict[str, List], n_jobs: int = 1):
     """Use GridSearchCV to do hyperparam tuning, but we want to explicitly specify the train/val split.
         Thus, we ned to use `PredefinedSplit` to force the proper splits.
         
-        Takes 3 mins per model.
+        Takes 5 mins per model.
     """
     # First, concatenate train/val sets (NOTE: need to do concatenation slightly diff for sparse arrays)
     X: np.ndarray = scipy.sparse.vstack([X_train, X_val]) if issparse(X_train) else np.concatenate((X_train, X_val), axis=0)
@@ -70,6 +74,7 @@ def tune_hyperparams(X_train: np.ndarray, X_val: np.ndarray, y_train: np.ndarray
     clf.fit(X, y)
     best_model = model.__class__(**clf.best_params_)
     best_model.fit(X_train, y_train) # refit on only training data so that we are truly do `k`-shot learning
+    breakpoint()
     return best_model
 
 def run_evaluation(X_train: np.ndarray, 
@@ -211,7 +216,7 @@ if __name__ == "__main__":
     df_existing: Optional[pd.DataFrame] = None
     if os.path.exists(path_to_output_file):
         logger.warning(f"Results already exist @ `{path_to_output_file}`.")
-        df_existing = pd.read_csv(path_to_output_file)
+        df_existing = pd.read_csv(path_to_output_file) if not is_force_refresh else None
 
     # Load EHRSHOT dataset
     dataset = datasets.Dataset.from_parquet(path_to_dataset)
@@ -291,7 +296,7 @@ if __name__ == "__main__":
                 ks: List[int] = sorted([ int(x) for x in few_shots_dict[sub_task].keys() ])
                 
                 # TODO - remove
-                ks = [128]
+                ks = [-1]
 
                 # For each k-shot sample we are evaluating...
                 for k in ks:

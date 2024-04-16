@@ -31,8 +31,9 @@ BASE_MODELS: List[str] = list(MODEL_2_NAME.keys())
 
 # Map each base model to a set of heads to test
 BASE_MODEL_2_HEADS: Dict[str, List[str]] = {
-    'count' : ['gbm', 'lr_lbfgs', 'rf', ], 
-    'clmbr' : ['lr_lbfgs', 'lr_femr', 'rf', ],
+    'count' : ['lr_lbfgs', ], # TODO
+    # 'count' : ['gbm', 'lr_lbfgs', 'rf', ], 
+    'clmbr' : ['lr_lbfgs', 'lr_lbfgs', 'rf', ],
     'gpt2-base-v8_chunk:last_embed:last' : ['gbm', 'lr_lbfgs', 'rf', ], 
     'bert-base-v8_chunk:last_embed:last' : ['gbm', 'lr_lbfgs', 'rf', ], 
 }
@@ -223,9 +224,9 @@ def split_labels(labels: List[meds.Label], path_to_split_csv: str) -> Tuple:
         'test': np.array([ x['patient_id'] for x in labels_split['test'] ]),
     }
     label_times: Dict[str, np.ndarray] = {
-        'train': np.array([ x['prediction_time'].to_numpy() for x in labels_split['train'] ]),
-        'val': np.array([ x['prediction_time'].to_numpy() for x in labels_split['val'] ]),
-        'test': np.array([ x['prediction_time'].to_numpy() for x in labels_split['test'] ]),
+        'train': np.array([ x['prediction_time'].to_numpy() if not isinstance(x['prediction_time'], np.datetime64) else x['prediction_time'] for x in labels_split['train'] ]),
+        'val': np.array([ x['prediction_time'].to_numpy() if not isinstance(x['prediction_time'], np.datetime64) else x['prediction_time'] for x in labels_split['val'] ]),
+        'test': np.array([ x['prediction_time'].to_numpy() if not isinstance(x['prediction_time'], np.datetime64) else x['prediction_time'] for x in labels_split['test'] ]),
     }
     return labels_split, label_values, label_times, patient_ids
 

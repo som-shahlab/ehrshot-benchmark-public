@@ -62,8 +62,6 @@ if __name__ == "__main__":
     # Load consolidated labels across all patients for all tasks
     labels: List[meds.Label] = convert_csv_labels_to_meds(path_to_labels_csv)
     
-    breakpoint()
-
     # Combine two featurizations of each patient: one for the patient's age, and one for the count of every code
     # they've had in their record up to the prediction timepoint for each label
     age = AgeFeaturizer()
