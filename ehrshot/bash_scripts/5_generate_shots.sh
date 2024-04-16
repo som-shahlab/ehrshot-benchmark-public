@@ -1,15 +1,15 @@
 #!/bin/bash
-#SBATCH --job-name=6_generate_shots
-#SBATCH --output=logs/6_generate_shots_%A.out
-#SBATCH --error=logs/6_generate_shots_%A.err
+#SBATCH --job-name=5_generate_shots
+#SBATCH --output=logs/5_generate_shots_%A.out
+#SBATCH --error=logs/5_generate_shots_%A.err
 #SBATCH --time=2-00:00:00
 #SBATCH --partition=normal
 #SBATCH --mem=200G
 #SBATCH --cpus-per-task=20
 
-# Time to run: 2 mins
+# Time to run: 5 mins per labeler
 
-labeling_functions=(
+labelers=(
     "guo_los" 
     "guo_readmission"
     "guo_icu"
@@ -26,15 +26,12 @@ labeling_functions=(
     "lab_anemia"
     # "chexpert" # TODO
 )
-shot_strats=("all")
 
-for labeling_function in "${labeling_functions[@]}"; do
-    for shot_strat in "${shot_strats[@]}"; do
+for labeler in "${labelers[@]}"; do
     python3 ../5_generate_shots.py \
-        --labeler ${labeling_function} \
-        --shot_strat ${shot_strat} \
+        --labeler ${labeler} \
+        --shot_strat "all" \
         --n_replicates 5
-    done
 done
 
-echo "Done!" >&2
+echo "Done!"
