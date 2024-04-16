@@ -6,7 +6,7 @@ import pandas as pd
 
 if __name__ == "__main__":
     path_to_labels_dir: str = get_rel_path(__file__, "../assets/labels/")
-    labelers: List[str] = os.listdir(path_to_labels_dir)
+    labelers: List[str] = [ x for x in os.listdir(path_to_labels_dir) if x.endswith('.csv') ]
     print(f"Found {len(labelers)} labelers to merge: {labelers}")
 
     # Merge all predictions times for all labels across all tasks into a single file,

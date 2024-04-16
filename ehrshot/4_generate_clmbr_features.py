@@ -3,7 +3,7 @@ import os
 import pickle
 from typing import List
 import femr.models.transformer
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import meds
 import torch
 from loguru import logger
@@ -21,6 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--path_to_features_dir", default=get_rel_path(__file__, "../assets/features/"), type=str, help="Path to directory where features will be saved")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu", type=str, help="GPU device to use (if available)")
     parser.add_argument("--num_threads", default=5, type=int, help="Number of threads to use")
+    parser.add_argument("--patient_range", type=str, default=None, help="Comma-separated patient range to featurize (inclusive) -- e.g. '0,40' gets patients in dataset at indices 0 through 40, inclusive")
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -31,6 +32,7 @@ if __name__ == "__main__":
     path_to_features_dir: str = args.path_to_features_dir
     num_threads: int = args.num_threads
     device: str = args.device
+    patient_range: Optional[str] = args.patient_range
     os.makedirs(path_to_features_dir, exist_ok=True)
 
     assert os.path.exists(args.path_to_dataset), f"Path to dataset does not exist: {args.path_to_dataset}"
@@ -42,7 +44,11 @@ if __name__ == "__main__":
 
     # Load EHRSHOT dataset
     dataset = datasets.Dataset.from_parquet(path_to_dataset)
+    
+    if patient_range is not None:
+        dataset = dataset.select(range(int(patient_range.split(",")[0]), int(patient_range.split(",")[1])))
 
+    print("==> Len dataset:", len(dataset))
     # # Load ontology
     # ontology: Ontology = pickle.load(open(path_to_ontology, "rb"))
     # # Prune ontology to dataset
@@ -51,6 +57,8 @@ if __name__ == "__main__":
     # Load consolidated labels across all patients for all tasks
     labels: List[meds.Label] = convert_csv_labels_to_meds(path_to_labels_csv)
     
+    labels = [ x for x in labels if x['patient_id'] in dataset['patient_id'] ]
+    
     # Load model
     model = femr.models.transformer.FEMRModel.from_pretrained(model_name)
     
@@ -58,7 +66,7 @@ if __name__ == "__main__":
     results: Dict[str, Any] = femr.models.transformer.compute_features(dataset, model_name, labels, ontology=None, num_proc=num_threads, tokens_per_batch=1024, device=device)
 
     # Save results
-    path_to_output_file = os.path.join(path_to_features_dir, "clmbr_features.pkl")
+    path_to_output_file = os.path.join(path_to_features_dir, f"clmbr_features_{patient_range}.pkl")
     logger.info(f"Saving results to `{path_to_output_file}`")
     with open(path_to_output_file, 'wb') as f:
         pickle.dump(results, f)
