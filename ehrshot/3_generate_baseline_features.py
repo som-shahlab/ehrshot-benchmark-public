@@ -4,7 +4,7 @@ Timing:
     2 hrs to featurize on Carina (10 threads, 400 GB RAM)
 
 Usage:
-    python 3_generate_baseline_features.py
+    python 3_generate_baseline_features.py --is_ontology_expansion --num_threads 10
 """
 import argparse
 import pickle
@@ -46,22 +46,21 @@ if __name__ == "__main__":
     # Load EHRSHOT dataset
     dataset = datasets.Dataset.from_parquet(path_to_dataset)
     
-    # TODO - remove
-    # dataset = dataset.select(list(range(0, 5000)) + [ len(dataset) - 1 ])
-    
     patient_index: PatientIndex = PatientIndex(dataset)
     
     # Load ontology
-    ontology: Ontology = pickle.load(open(path_to_ontology, "rb"))
-    ontology.prune_to_dataset(dataset, num_threads, prune_all_descriptions=True)
-    with open('./ontology_pruned.pkl', 'wb') as f:
-        pickle.dump(ontology, f)
-
+    if False:
+        print("Loading ontology...")
+        ontology: Ontology = pickle.load(open(path_to_ontology, "rb"))
+        print("Loaded ontology")
+        ontology.prune_to_dataset(dataset, num_threads, prune_all_descriptions=True)
+        with open('./ontology_pruned.pkl', 'wb') as f:
+            pickle.dump(ontology, f)
+    else:
+        ontology = pickle.load(open('./ontology_pruned.pkl', 'rb'))
+    
     # Load consolidated labels across all patients for all tasks
     labels: List[meds.Label] = convert_csv_labels_to_meds(path_to_labels_csv)
-
-    # TODO - remove
-    # labels = [ x for x in labels if x['patient_id'] in dataset['patient_id'] ]
     
     # Combine two featurizations of each patient: one for the patient's age, and one for the count of every code
     # they've had in their record up to the prediction timepoint for each label
@@ -70,20 +69,23 @@ if __name__ == "__main__":
     featurizer_age_count = FeaturizerList([age, count])
 
     # Preprocessing the featurizers -- this includes processes such as normalizing age
-    logger.info("Start | Preprocess featurizers")
-    featurizer_age_count.preprocess_featurizers( dataset, patient_index, labels, num_proc=num_threads )
-    logger.info("Finish | Preprocess featurizers")
-    
-    with open(f'./featurizer_age_count__ont_exp_{is_ontology_expansion}.pkl', 'wb') as f:
-        pickle.dump(featurizer_age_count, f)
-    
+    if True:
+        logger.info("Start | Preprocess featurizers")
+        featurizer_age_count.preprocess_featurizers( dataset, patient_index, labels, num_proc=num_threads )
+        logger.info("Finish | Preprocess featurizers")
+        with open(f'./featurizer_age_count__ont_exp_{is_ontology_expansion}__pruned.pkl', 'wb') as f:
+            pickle.dump(featurizer_age_count, f)
+    else:
+        with open(f'./featurizer_age_count__ont_exp_{is_ontology_expansion}__pruned.pkl', 'rb') as f:
+            featurizer_age_count = pickle.load(f)
+        
     # Run actual featurization for each patient
     logger.info("Start | Featurize patients")
     results: Dict[str, Any] = featurizer_age_count.featurize(dataset, patient_index, labels, num_proc=num_threads)
     logger.info("Finish | Featurize patients")
 
     # Save results
-    path_to_output_file = os.path.join(path_to_features_dir, f"count_features__ont_exp_{is_ontology_expansion}.pkl")
+    path_to_output_file = os.path.join(path_to_features_dir, f"count_features__ont_exp_{is_ontology_expansion}__pruned.pkl")
     logger.info(f"Saving results to `{path_to_output_file}`")
     with open(path_to_output_file, 'wb') as f:
         pickle.dump(results, f)

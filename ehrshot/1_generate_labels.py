@@ -1,10 +1,8 @@
 """
 Usage:
-python3 2_generate_labels.py
+python3 1_generate_labels.py
 """
 import argparse
-import datetime
-import json
 import os
 import meds
 import datasets
@@ -87,6 +85,5 @@ if __name__ == "__main__":
     labeled_patients = labeler.apply(dataset, batch_size=1, num_proc=1)
     table = pyarrow.Table.from_pylist(labeled_patients, schema=meds.label)
     pyarrow.csv.write_csv(table, os.path.join(path_to_labels_dir, f"{args.labeler}_labels.csv"))
-
 
 

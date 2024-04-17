@@ -37,8 +37,8 @@ from utils import (
     convert_csv_labels_to_meds,
     get_labels_and_features,
     get_rel_path, 
-    process_chexpert_labels, 
-    convert_multiclass_to_binary_labels,
+    process_chexpert_meds_labels, 
+    convert_multiclass_to_binary_meds_labels,
     split_labels
 )
 import datasets
@@ -107,7 +107,7 @@ def generate_shots(k: int,
         'label_values_val_k': y_val[val_idxs_k].tolist(),
         "train_idxs": train_idxs_k,
         "val_idxs": val_idxs_k,
-    }
+    } # type: ignore
     
     return shot_dict
 
@@ -151,10 +151,15 @@ if __name__ == "__main__":
     
     if labeler == "chexpert":
         # CheXpert is multilabel, convert to binary for EHRSHOT
-        labels = process_chexpert_labels(labels)
+        labels = process_chexpert_meds_labels(labels)
     elif labeler.startswith('lab_'):
         # Lab values is multiclass, convert to binary for EHRSHOT
-        labels = convert_multiclass_to_binary_labels(labels, threshold=1)
+        labels = convert_multiclass_to_binary_meds_labels(labels, threshold=1)
+
+    # Resort labels
+    # ! IMPORTANT -- MUST KEEP THIS HERE TO PRESERVE PROPER SORTING
+    # ! OTHERWISE 6_eval.py WILL FAIL IN MYSTERIOUS WAYS B/C LABELS ARE MISALIGNED
+    labels = get_labels_and_features(labels)
 
     # Train/val/test splits
     labels_split, label_values, label_times, patient_ids = split_labels(labels, path_to_splits_csv)
