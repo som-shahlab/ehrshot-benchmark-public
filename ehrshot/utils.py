@@ -235,6 +235,7 @@ def join_labels_clmbr(features: Dict[str, np.ndarray], labels: List[meds.Label])
     sort_order: np.ndarray = np.lexsort((features['feature_times'], features['patient_ids'])) # Note: Last col is primary sort key
     patient_ids = features['patient_ids'][sort_order]
     times = features['feature_times'][sort_order]
+    feats = features['features'][sort_order]
 
     current_feature_idx: int = 0
     feature_indices: List[int] = []
@@ -254,15 +255,15 @@ def join_labels_clmbr(features: Dict[str, np.ndarray], labels: List[meds.Label])
                 # The next feature is invalid for this label (b/c either: we hit the last feature possible, we past the label's time with the next feature, or we've hit the last feature for this patient), so save this feature
                 assert label['patient_id'] == patient_ids[current_feature_idx], f"No features found for patient_id={label['patient_id']} | time={label['prediction_time']}"
                 assert times[current_feature_idx] <= label['prediction_time'], f"No features found for patient_id={label['patient_id']} | time={label['prediction_time']}"
-                feature_indices(current_feature_idx)
+                feature_indices.append(current_feature_idx)
                 break
 
             current_feature_idx += 1
             
     return {
-        "patient_ids": features["patient_ids"][feature_indices],
-        "times": features["feature_times"][feature_indices],
-        "features": features["features"][feature_indices, :],
+        "patient_ids": patient_ids[feature_indices],
+        "times": times[feature_indices],
+        "features": feats[feature_indices, :],
     }
 
 def join_labels_for_baseline(features: Dict[str, np.ndarray], labels: List[meds.Label]) -> Dict[str, np.ndarray]:
@@ -275,6 +276,7 @@ def join_labels_for_baseline(features: Dict[str, np.ndarray], labels: List[meds.
     sort_order: np.ndarray = np.lexsort((features['feature_times'], features['patient_ids'])) # Note: Last col is primary sort key
     patient_ids = features['patient_ids'][sort_order]
     times = features['feature_times'][sort_order]
+    feats = features['features'][sort_order]
     
     current_feature_idx: int = 0
     feature_indices: List[int] = []
@@ -296,9 +298,9 @@ def join_labels_for_baseline(features: Dict[str, np.ndarray], labels: List[meds.
             current_feature_idx += 1
             
     return {
-        "patient_ids": features["patient_ids"][feature_indices],
-        "times": features["feature_times"][feature_indices],
-        "features": features["features"][feature_indices, :],
+        "patient_ids": patient_ids[feature_indices],
+        "times": times[feature_indices],
+        "features": feats[feature_indices, :],
     }
 
 def get_labels_and_features(labels: List[meds.Label], value_type: str = 'boolean_value', path_to_features_dir: Optional[str] = None) -> Union[List[meds.Label], Tuple]:
@@ -340,14 +342,13 @@ def get_labels_and_features(labels: List[meds.Label], value_type: str = 'boolean
             # Align label times with feature times
             if model == 'count':
                 joined_features: Dict[str, np.ndarray] = join_labels_for_baseline(features, labels)
+                assert np.all(joined_features['patient_ids'] == label_patient_ids)
+                assert np.all(joined_features['times'] == label_times)
             elif model == 'clmbr':
                 joined_features: Dict[str, np.ndarray] = join_labels_clmbr(features, labels)
+                assert np.all(joined_features['patient_ids'] == label_patient_ids)
             else:
                 raise ValueError(f"Unrecognized model: {model}")
-
-            # Sanity checks
-            assert np.all(joined_features['patient_ids'] == label_patient_ids)
-            assert np.all(joined_features['times'] == label_times)
 
             # Save featurizations for this model
             featurizations[model] = joined_features['features']
