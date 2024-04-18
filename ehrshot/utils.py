@@ -19,7 +19,7 @@ SPLIT_VAL_CUTOFF: int = 85
 # Types of base models to test
 MODEL_2_NAME: Dict[str, str] = {
     'count' : 'Count-based',
-    # 'clmbr' : 'CLMBR',
+    'clmbr' : 'CLMBR',
     # 'gpt2-base' : 'GPT2-base',
     # 'gpt2-medium' : 'GP2-medium',
     # 'gpt2-large' : 'GP2-large',
@@ -31,9 +31,8 @@ BASE_MODELS: List[str] = list(MODEL_2_NAME.keys())
 
 # Map each base model to a set of heads to test
 BASE_MODEL_2_HEADS: Dict[str, List[str]] = {
-    'count' : ['lr_lbfgs', ], # TODO
-    # 'count' : ['gbm', 'lr_lbfgs', 'rf', ], 
-    'clmbr' : ['lr_lbfgs', 'lr_lbfgs', 'rf', ],
+    'count' : ['gbm', 'lr_lbfgs', 'rf', ], 
+    'clmbr' : ['lr_lbfgs', ],
     'gpt2-base-v8_chunk:last_embed:last' : ['gbm', 'lr_lbfgs', 'rf', ], 
     'bert-base-v8_chunk:last_embed:last' : ['gbm', 'lr_lbfgs', 'rf', ], 
 }
@@ -47,7 +46,7 @@ HEAD_2_NAME: Dict[str, str] = {
 }
 
 # Labeling functions
-LABELING_FUNCTIONS: List[str] = [
+LABELERS: List[str] = [
     # Guo et al. 2023
     "guo_los",
     "guo_readmission",
@@ -69,7 +68,7 @@ LABELING_FUNCTIONS: List[str] = [
     "chexpert"
 ]
 
-LABELING_FUNCTION_2_PAPER_NAME = {
+LABELER_2_PAPER_NAME = {
     "guo_los": "Long LOS",
     "guo_readmission": "30-day Readmission",
     "guo_icu": "ICU Admission",
@@ -112,7 +111,7 @@ CHEXPERT_LABELS = [
     "Support Devices",
 ]
 
-TASK_GROUP_2_LABELING_FUNCTION = {
+TASK_GROUP_2_LABELER = {
     "operational_outcomes": [
         "guo_los",
         "guo_readmission",
@@ -154,12 +153,7 @@ RF_PARAMS = {
 }
 
 # Few shot settings
-SHOT_STRATS = {
-    'few' : [1, 2, 4, 8, 12, 16, 24, 32, 48, 64, 128],
-    'long' : [-1],
-    'all' : [1, 2, 4, 8, 12, 16, 24, 32, 48, 64, 128, -1],
-    'debug' : [10],
-}
+SHOTS = [1, 2, 4, 8, 12, 16, 24, 32, 48, 64, 128, -1]
 
 # Plotting
 SCORE_MODEL_HEAD_2_COLOR = {
@@ -230,7 +224,49 @@ def split_labels(labels: List[meds.Label], path_to_split_csv: str) -> Tuple:
     }
     return labels_split, label_values, label_times, patient_ids
 
-def join_labels(features: Dict[str, np.ndarray], labels: List[meds.Label]) -> Dict[str, np.ndarray]:
+
+def join_labels_clmbr(features: Dict[str, np.ndarray], labels: List[meds.Label]) -> Dict[str, np.ndarray]:
+    """CLMBR returns feature['times'] <= label['time'], so we take max(feature_time | feature_time <= label time)"""
+    # Sort arrays by (1) patient ID and (2) label time
+    ## Labels
+    labels = sorted(labels, key=lambda x: (x["patient_id"], x["prediction_time"]))
+    
+    ## Feats
+    sort_order: np.ndarray = np.lexsort((features['feature_times'], features['patient_ids'])) # Note: Last col is primary sort key
+    patient_ids = features['patient_ids'][sort_order]
+    times = features['feature_times'][sort_order]
+
+    current_feature_idx: int = 0
+    feature_indices: List[int] = []
+    for label in tqdm(labels):
+        while True:
+            assert patient_ids[current_feature_idx] <= label['patient_id'], f"No features found for patient_id={label['patient_id']} | time={label['prediction_time']}"
+            if patient_ids[current_feature_idx] < label['patient_id']:
+                # Continue until we reach this patient
+                current_feature_idx += 1
+                continue
+
+            if (
+                current_feature_idx + 1 >= len(patient_ids) # reached last feature
+                or patient_ids[current_feature_idx + 1] != label['patient_id'] # reached last feature for patient
+                or times[current_feature_idx + 1] > label['prediction_time'] # past label time
+            ): 
+                # The next feature is invalid for this label (b/c either: we hit the last feature possible, we past the label's time with the next feature, or we've hit the last feature for this patient), so save this feature
+                assert label['patient_id'] == patient_ids[current_feature_idx], f"No features found for patient_id={label['patient_id']} | time={label['prediction_time']}"
+                assert times[current_feature_idx] <= label['prediction_time'], f"No features found for patient_id={label['patient_id']} | time={label['prediction_time']}"
+                feature_indices(current_feature_idx)
+                break
+
+            current_feature_idx += 1
+            
+    return {
+        "patient_ids": features["patient_ids"][feature_indices],
+        "times": features["feature_times"][feature_indices],
+        "features": features["features"][feature_indices, :],
+    }
+
+def join_labels_for_baseline(features: Dict[str, np.ndarray], labels: List[meds.Label]) -> Dict[str, np.ndarray]:
+    """Baseline returns feature['times'] == label['time'], so we expect exact matches"""
     # Sort arrays by (1) patient ID and (2) label time
     ## Labels
     labels = sorted(labels, key=lambda x: (x["patient_id"], x["prediction_time"]))
@@ -302,7 +338,12 @@ def get_labels_and_features(labels: List[meds.Label], value_type: str = 'boolean
             features: Dict[str, np.ndarray] = pickle.load(f)
 
             # Align label times with feature times
-            joined_features: Dict[str, np.ndarray] = join_labels(features, labels)
+            if model == 'count':
+                joined_features: Dict[str, np.ndarray] = join_labels_for_baseline(features, labels)
+            elif model == 'clmbr':
+                joined_features: Dict[str, np.ndarray] = join_labels_clmbr(features, labels)
+            else:
+                raise ValueError(f"Unrecognized model: {model}")
 
             # Sanity checks
             assert np.all(joined_features['patient_ids'] == label_patient_ids)
@@ -379,7 +420,7 @@ def type_tuple_list(s):
 
 def filter_df(df: pd.DataFrame, 
             score: Optional[str] = None, 
-            labeling_function: Optional[str] = None, 
+            labeler: Optional[str] = None, 
             task_group: Optional[str] = None,
             sub_tasks: Optional[List[str]] = None,
             model_heads: Optional[List[Tuple[str, str]]] = None) -> pd.DataFrame:
@@ -387,11 +428,11 @@ def filter_df(df: pd.DataFrame,
     df = df.copy()
     if score:
         df = df[df['score'] == score]
-    if labeling_function:
-        df = df[df['labeling_function'] == labeling_function]
+    if labeler:
+        df = df[df['labeler'] == labeler]
     if task_group:
-        labeling_functions: List[str] = TASK_GROUP_2_LABELING_FUNCTION[task_group]
-        df = df[df['labeling_function'].isin(labeling_functions)]
+        labelers: List[str] = TASK_GROUP_2_LABELER[task_group]
+        df = df[df['labeler'].isin(labelers)]
     if sub_tasks:
         df = df[df['sub_task'].isin(sub_tasks)]
     if model_heads:

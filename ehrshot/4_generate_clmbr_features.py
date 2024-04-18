@@ -11,6 +11,8 @@ import femr.models.tokenizer
 import femr.models.processor
 import datasets
 from utils import get_rel_path, convert_csv_labels_to_meds
+import numpy as np
+from tqdm import tqdm
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate CLMBR-T-Base patient representations (for all tasks at once)")
@@ -19,8 +21,70 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--path_to_features_dir", default=get_rel_path(__file__, "../assets/features/"), type=str, help="Path to directory where features will be saved")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu", type=str, help="GPU device to use (if available)")
     parser.add_argument("--num_threads", default=5, type=int, help="Number of threads to use")
-    parser.add_argument("--patient_range", type=str, default=None, help="Comma-separated patient range to featurize (inclusive) -- e.g. '0,40' gets patients in dataset at indices 0 through 40, inclusive")
     return parser.parse_args()
+
+def compute_features(
+    dataset: datasets.Dataset,
+    model_path: str,
+    labels: List[meds.Label],
+    num_proc: int = 1,
+    tokens_per_batch: int = 1024,
+    device: Optional[torch.device] = None,
+    ontology: Optional[femr.ontology.Ontology] = None,
+) -> Dict[str, np.ndarray]:
+    """
+    Taken from: https://github.com/som-shahlab/femr/blob/6b2f778afd3a346d0beef3098b1868912d870df4/src/femr/models/transformer.py#L324
+    """
+    task = femr.models.tasks.LabeledPatientTask(labels)
+
+    index = femr.index.PatientIndex(dataset, num_proc=num_proc)
+
+    model = femr.models.transformer.FEMRModel.from_pretrained(model_path, task_config=task.get_task_config())
+    tokenizer = femr.models.tokenizer.FEMRTokenizer.from_pretrained(model_path, ontology=ontology)
+    processor = femr.models.processor.FEMRBatchProcessor(tokenizer, task=task)
+
+    filtered_data = task.filter_dataset(dataset, index)
+
+    if device:
+        model = model.to(device)
+
+    if False:
+        batches = processor.convert_dataset(
+            filtered_data, tokens_per_batch=tokens_per_batch, min_patients_per_batch=1, num_proc=num_proc
+        )
+        with open('/share/pi/nigam/mwornow/batches_32k.pt', 'wb') as fd:
+            pickle.dump(batches, fd)
+    else:
+        print("Loading batch from disk...")
+        batches = pickle.load(open('/share/pi/nigam/mwornow/batches_32k.pt', 'rb'))
+
+    batches.set_format("pt")
+
+    all_patient_ids = []
+    all_feature_times = []
+    all_representations = []
+
+    for batch in tqdm(batches, total=len(batches)):
+        batch = processor.collate([batch])["batch"]
+        # batch = self.creator.cleanup_batch([batch]).unsqueeze(dim=0)
+        # batch = batch.to(device)
+        for key, val in batch.items():
+            if isinstance(val, torch.Tensor):
+                batch[key] = batch[key].to(device)
+        for key, val in batch['transformer'].items():
+            if isinstance(val, torch.Tensor):
+                batch['transformer'][key] = batch['transformer'][key].to(device)
+        with torch.no_grad():
+            _, result = model(batch, return_reprs=True)
+            all_patient_ids.append(result["patient_ids"].cpu().numpy())
+            all_feature_times.append(result["timestamps"].cpu().numpy())
+            all_representations.append(result["representations"].cpu().numpy())
+
+    return {
+        "patient_ids": np.concatenate(all_patient_ids),
+        "feature_times": np.concatenate(all_feature_times).astype("datetime64[s]"),
+        "features": np.concatenate(all_representations),
+    }
 
 if __name__ == "__main__":
     args = parse_args()
@@ -29,7 +93,6 @@ if __name__ == "__main__":
     path_to_features_dir: str = args.path_to_features_dir
     num_threads: int = args.num_threads
     device: str = args.device
-    patient_range: Optional[str] = args.patient_range
     os.makedirs(path_to_features_dir, exist_ok=True)
 
     assert os.path.exists(args.path_to_dataset), f"Path to dataset does not exist: {args.path_to_dataset}"
@@ -41,28 +104,23 @@ if __name__ == "__main__":
     # Load EHRSHOT dataset
     dataset = datasets.Dataset.from_parquet(path_to_dataset)
     
-    if patient_range is not None:
-        dataset = dataset.select(range(int(patient_range.split(",")[0]), int(patient_range.split(",")[1])))
-
     print("==> Len dataset:", len(dataset))
 
     # Load consolidated labels across all patients for all tasks
     labels: List[meds.Label] = convert_csv_labels_to_meds(path_to_labels_csv)
     
-    labels = [ x for x in labels if x['patient_id'] in dataset['patient_id'] ]
-    
     # Load model
-    print("Loading model", model_nme)
+    print("Loading model", model_name, "to device", device)
     model = femr.models.transformer.FEMRModel.from_pretrained(model_name)
     
     # Generate features
-    tokens_per_batch = 64 * 1024
+    tokens_per_batch = 32 * 1024
     print("Generating batches of size", tokens_per_batch)
-    breakpoint()
-    results: Dict[str, Any] = femr.models.transformer.compute_features(dataset, model_name, labels, ontology=None, num_proc=num_threads, tokens_per_batch=tokens_per_batch, device=device)
+    # breakpoint()
+    results: Dict[str, Any] = compute_features(dataset, model_name, labels, ontology=None, num_proc=num_threads, tokens_per_batch=tokens_per_batch, device=device)
 
     # Save results
-    path_to_output_file = os.path.join(path_to_features_dir, f"clmbr_features_{patient_range}.pkl")
+    path_to_output_file = os.path.join(path_to_features_dir, f"clmbr_featurescxzx.pkl")
     logger.info(f"Saving results to `{path_to_output_file}`")
     with open(path_to_output_file, 'wb') as f:
         pickle.dump(results, f)

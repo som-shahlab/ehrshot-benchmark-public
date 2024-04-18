@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from utils import (
-    LABELING_FUNCTION_2_PAPER_NAME,
+    LABELER_2_PAPER_NAME,
     HEAD_2_NAME,
     MODEL_2_NAME, 
     TASK_GROUP_2_PAPER_NAME,
@@ -24,9 +24,9 @@ def _plot_unified_legend(fig, axes, ncol=None, fontsize=14):
     legend_n_col: int = len([ x for x in labels if '(Full)' not in x ]) if ncol is None else ncol
     fig.legend([ label2handle[l] for l in labels ], labels, loc='lower center', ncol=legend_n_col, fontsize=fontsize)
 
-def plot_one_labeling_function(df: pd.DataFrame,
+def plot_one_labeler(df: pd.DataFrame,
                                 ax: plt.Axes,
-                                labeling_function: str,
+                                labeler: str,
                                 sub_tasks: List[str],
                                 score: str,
                                 model_heads: Optional[List[Tuple[str, str]]] = None,
@@ -39,10 +39,10 @@ def plot_one_labeling_function(df: pd.DataFrame,
             x-axis = # of train examples per class (e.g. 1, 2, 4, 8, 16, 32, 64, 128, 256, 512)
             lines = model+head's achieved mean score across replicates (e.g. AUROC/AUPRC)
     """
-    # Limit to specific labeling_function, subtask, score, (model, head) combos
-    df = filter_df(df, score=score, labeling_function=labeling_function, sub_tasks=sub_tasks, model_heads=model_heads)
+    # Limit to specific labeler, subtask, score, (model, head) combos
+    df = filter_df(df, score=score, labeler=labeler, sub_tasks=sub_tasks, model_heads=model_heads)
 
-    if labeling_function == 'new_celiac':
+    if labeler == 'new_celiac':
         # Only 62 train examples, so cutoff plot at `k = 64`
         df = df[df['k'] <= 64]
 
@@ -59,7 +59,7 @@ def plot_one_labeling_function(df: pd.DataFrame,
         x_tick_labels = [ str(k) if k != full_data_k else 'All' for k in ks ]
     
     df_means = df.groupby([
-        'labeling_function',
+        'labeler',
         'sub_task',
         'model',
         'head',
@@ -68,14 +68,14 @@ def plot_one_labeling_function(df: pd.DataFrame,
     ]).agg({
         'value' : 'mean',
         'k' : 'first',
-        'labeling_function' : 'first',
+        'labeler' : 'first',
         'sub_task' : 'first',
         'model' : 'first',
         'head' : 'first',
         'score' : 'first',
     }).reset_index(drop = True)
     df_stds = df.groupby([
-        'labeling_function',
+        'labeler',
         'sub_task',
         'model',
         'head',
@@ -84,7 +84,7 @@ def plot_one_labeling_function(df: pd.DataFrame,
     ]).agg({
         'value' : 'std',
         'k' : 'first',
-        'labeling_function' : 'first',
+        'labeler' : 'first',
         'sub_task' : 'first',
         'model' : 'first',
         'head' : 'first',
@@ -123,7 +123,7 @@ def plot_one_labeling_function(df: pd.DataFrame,
         ax.set_xscale("log")
     ax.tick_params(axis='x', labelsize=10)
     ax.tick_params(axis='y', labelsize=10)
-    ax.set_title(LABELING_FUNCTION_2_PAPER_NAME[labeling_function], size=14)
+    ax.set_title(LABELER_2_PAPER_NAME[labeler], size=14)
     ax.set_ylabel(score.upper(), fontsize=10)
     ax.set_xlabel("# of Train Examples per Class", fontsize=10)
     ax.set_xticks(ks, ks)
@@ -162,7 +162,7 @@ def plot_one_task_group(df: pd.DataFrame,
         x_tick_labels = [ str(k) if k != full_data_k else 'All' for k in ks ]
 
     df_means = df.groupby([
-        'labeling_function',
+        'labeler',
         'sub_task',
         'model',
         'head',
@@ -171,7 +171,7 @@ def plot_one_task_group(df: pd.DataFrame,
     ]).agg({
         'value' : 'mean',
         'k' : 'first',
-        'labeling_function' : 'first',
+        'labeler' : 'first',
         'sub_task' : 'first',
         'model' : 'first',
         'head' : 'first',

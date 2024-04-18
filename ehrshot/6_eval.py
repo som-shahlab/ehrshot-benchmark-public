@@ -1,8 +1,8 @@
-"""Create a file at `PATH_TO_LABELS_AND_FEATS_DIR/LABELING_FUNCTION/{SHOT_STRAT}_results.csv` containing:
+"""Create a file at `PATH_TO_LABELS_AND_FEATS_DIR/LABELERS/all_results.csv` containing:
     Output is a CSV with headers:
         sub_task, model, head, replicate, score_name, score_value, k
         
-python3 6_eval.py --path_to_output_dir './outputs' --labeler guo_icu  --shot_strat all --num_threads 20
+python3 6_eval.py --path_to_output_dir './outputs' --labeler guo_icu  --num_threads 20
 """
 
 import argparse
@@ -19,8 +19,7 @@ from sklearn.ensemble import RandomForestClassifier
 from loguru import logger
 from sklearn.preprocessing import MaxAbsScaler
 from utils import (
-    LABELING_FUNCTIONS,
-    SHOT_STRATS,
+    LABELERS,
     BASE_MODELS,
     BASE_MODEL_2_HEADS,
     convert_csv_labels_to_meds,
@@ -42,21 +41,6 @@ from scipy.sparse import issparse
 import scipy
 import lightgbm as lgb
 
-# TODO - remove
-XGB_PARAMS = {
-    'max_depth': [3,],
-    'learning_rate': [ 0.1, ],
-    'num_leaves' : [25, 100],
-}
-RF_PARAMS = {
-    'n_estimators': [20, 100,],
-    'max_depth' : [5, 10, ],
-}
-LR_PARAMS = {
-    "C": [1e-2,], 
-    "penalty": ['l2']
-}
-
 def tune_hyperparams(X_train: np.ndarray, X_val: np.ndarray, y_train: np.ndarray, y_val: np.ndarray, model, param_grid: Dict[str, List], n_jobs: int = 1):
     """Use GridSearchCV to do hyperparam tuning, but we want to explicitly specify the train/val split.
         Thus, we ned to use `PredefinedSplit` to force the proper splits.
@@ -74,7 +58,6 @@ def tune_hyperparams(X_train: np.ndarray, X_val: np.ndarray, y_train: np.ndarray
     clf.fit(X, y)
     best_model = model.__class__(**clf.best_params_)
     best_model.fit(X_train, y_train) # refit on only training data so that we are truly do `k`-shot learning
-    breakpoint()
     return best_model
 
 def run_evaluation(X_train: np.ndarray, 
@@ -184,8 +167,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--path_to_labels_dir", default=get_rel_path(__file__, "../assets/labels/"), type=str, help="Path to directory containing saved labels")
     parser.add_argument("--path_to_features_dir", default=get_rel_path(__file__, "../assets/features/"), type=str, help="Path to directory where features will be saved")
     parser.add_argument("--path_to_output_dir", required=True, type=str, help="Path to directory where results will be saved")
-    parser.add_argument("--labeler", required=True, type=str, help="Labeling function for which we will create k-shot samples.", choices=LABELING_FUNCTIONS, )
-    parser.add_argument("--shot_strat", type=str, choices=SHOT_STRATS.keys(), help="What type of X-shot evaluation we are interested in.", required=True )
+    parser.add_argument("--labeler", required=True, type=str, help="Labeling function for which we will create k-shot samples.", choices=LABELERS, )
     parser.add_argument("--num_threads", type=int, help="Number of threads to use")
     parser.add_argument("--is_force_refresh", action='store_true', default=False, help="Number of threads to use")
     return parser.parse_args()
@@ -198,11 +180,10 @@ if __name__ == "__main__":
     path_to_splits_csv: str = args.path_to_splits_csv
     path_to_output_dir: str = args.path_to_output_dir
     path_to_features_dir: str = args.path_to_features_dir
-    shot_strat: str = args.shot_strat
     num_threads: int = args.num_threads
     path_to_labels_csv: str = os.path.join(path_to_labels_dir, f"{labeler}_labels.csv")
-    path_to_shots: str = os.path.join(path_to_labels_dir, labeler, f"{shot_strat}_shots_data.json")
-    path_to_output_file: str = os.path.join(path_to_output_dir, labeler, f'{shot_strat}_results.csv')
+    path_to_shots: str = os.path.join(path_to_labels_dir, labeler, f"all_shots_data.json")
+    path_to_output_file: str = os.path.join(path_to_output_dir, labeler, f'all_results.csv')
     is_force_refresh: bool = args.is_force_refresh
     os.makedirs(os.path.dirname(path_to_output_file), exist_ok=True)
     
@@ -270,10 +251,10 @@ if __name__ == "__main__":
             y_test: np.ndarray = label_values[test_pids_idx]
             
             # For each subtask in this task... 
-            # NOTE: The "subtask" is just the same thing as LABELING_FUNCTION for all binary tasks.
+            # NOTE: The "subtask" is just the same thing as LABELERS for all binary tasks.
             # But for Chexpert, there are multiple subtasks, which of each represents a binary subtask
             for sub_task_idx, sub_task in enumerate(sub_tasks):
-                # Check if results already exist for this model/head/shot_strat in `results.csv`
+                # Check if results already exist for this model/head in `results.csv`
                 if df_existing is not None:
                     existing_rows: pd.DataFrame = df_existing[
                         (df_existing['labeler'] == labeler) 
@@ -295,9 +276,6 @@ if __name__ == "__main__":
         
                 ks: List[int] = sorted([ int(x) for x in few_shots_dict[sub_task].keys() ])
                 
-                # TODO - remove
-                ks = [-1]
-
                 # For each k-shot sample we are evaluating...
                 for k in ks:
                     replicates: List[int] = sorted([ int(x) for x in few_shots_dict[sub_task][str(k)].keys() ])

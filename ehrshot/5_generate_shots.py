@@ -1,4 +1,4 @@
-"""Create a file at `PATH_TO_LABELS_AND_FEATS_DIR/labeler/{shot_strat}_shots_data.json` containing:
+"""Create a file at `PATH_TO_LABELS_AND_FEATS_DIR/labeler/all_shots_data.json` containing:
 
 Output:
     few_shots_dict = {
@@ -23,7 +23,6 @@ Output:
 """
 import argparse
 import collections
-import datetime
 import json
 import os
 from typing import Dict, List, Union
@@ -31,9 +30,9 @@ import meds
 import numpy as np
 from loguru import logger
 from utils import (
-    LABELING_FUNCTIONS, 
+    LABELERS, 
     CHEXPERT_LABELS, 
-    SHOT_STRATS,
+    SHOTS,
     convert_csv_labels_to_meds,
     get_labels_and_features,
     get_rel_path, 
@@ -116,8 +115,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--path_to_dataset", default=get_rel_path(__file__, "../assets/ehrshot-meds-stanford/"), type=str, help="Path to MEDS formatted version of EHRSHOT")
     parser.add_argument("--path_to_labels_dir", default=get_rel_path(__file__, "../assets/labels/"), type=str, help="Path to directory containing saved labels")
     parser.add_argument("--path_to_splits_csv", default=get_rel_path(__file__, "../assets/splits.csv"), type=str, help="Path to patient train/val/test split CSV")
-    parser.add_argument("--labeler", required=True, type=str, help="Labeling function for which we will create k-shot samples.", choices=LABELING_FUNCTIONS, )
-    parser.add_argument("--shot_strat", type=str, choices=SHOT_STRATS.keys(), help="What type of X-shot evaluation we are interested in.", required=True )
+    parser.add_argument("--labeler", required=True, type=str, help="Labeling function for which we will create k-shot samples.", choices=LABELERS, )
     parser.add_argument("--n_replicates", type=int, help="Number of replicates to run for each `k`. Useful for creating std bars in plots", default=3, )
     return parser.parse_args()
 
@@ -127,10 +125,9 @@ if __name__ == "__main__":
     labeler: str = args.labeler
     path_to_labels_dir: str = args.path_to_labels_dir
     path_to_splits_csv: str = args.path_to_splits_csv
-    shot_strat: str = args.shot_strat
     n_replicates: int = args.n_replicates
     path_to_labels_csv: str = os.path.join(path_to_labels_dir, f"{labeler}_labels.csv")
-    path_to_output_file: str = os.path.join(path_to_labels_dir, labeler, f"{shot_strat}_shots_data.json")
+    path_to_output_file: str = os.path.join(path_to_labels_dir, labeler, f"all_shots_data.json")
     os.makedirs(os.path.dirname(path_to_output_file), exist_ok=True)
 
     assert os.path.exists(args.path_to_dataset), f"Path to dataset does not exist: {args.path_to_dataset}"
@@ -139,12 +136,6 @@ if __name__ == "__main__":
 
     # Load EHRSHOT dataset
     dataset = datasets.Dataset.from_parquet(path_to_dataset)
-
-    # Few v. long shot
-    if shot_strat in SHOT_STRATS:
-        SHOTS: List[int] = SHOT_STRATS[shot_strat]
-    else:
-        raise ValueError(f"Invalid `shot_strat`: {shot_strat}")
 
     # Load labels for this task
     labels: List[meds.Label] = convert_csv_labels_to_meds(path_to_labels_csv)
