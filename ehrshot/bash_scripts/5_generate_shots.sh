@@ -30,7 +30,6 @@ labelers=(
 for labeler in "${labelers[@]}"; do
     python3 ../5_generate_shots.py \
         --labeler ${labeler} \
-        --shot_strat "all" \
         --n_replicates 5
 done
 

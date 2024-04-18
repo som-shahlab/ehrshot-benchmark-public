@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=9_make_cohort_plots
-#SBATCH --output=logs/9_make_cohort_plots_%A.out
-#SBATCH --error=logs/9_make_cohort_plots_%A.err
+#SBATCH --job-name=8_make_cohort_plots
+#SBATCH --output=logs/8_make_cohort_plots_%A.out
+#SBATCH --error=logs/8_make_cohort_plots_%A.err
 #SBATCH --time=2-00:00:00
 #SBATCH --partition=normal
 #SBATCH --mem=300G
@@ -9,7 +9,7 @@
 
 mkdir -p ../../EHRSHOT_ASSETS/cohort_stats
 
-python3 ../9_make_cohort_plots.py \
+python3 ../8_make_cohort_plots.py \
     --path_to_database ../../EHRSHOT_ASSETS/femr/extract \
     --path_to_labels_and_feats_dir ../../EHRSHOT_ASSETS/custom_benchmark \
     --path_to_input_dir ../../EHRSHOT_ASSETS/data \
