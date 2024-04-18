@@ -299,7 +299,7 @@ python3 2_generate_labels_and_features.py \
     --path_to_database ../EHRSHOT_ASSETS/femr/extract \
     --path_to_output_dir ../EHRSHOT_ASSETS/benchmark \
     --path_to_chexpert_csv ../EHRSHOT_ASSETS/benchmark/chexpert/chexpert_labeled_radiology_notes.csv \
-    --labeling_function guo_los \
+    --labeler guo_los \
     --is_skip_label \
     --num_threads 10
 ```
@@ -322,7 +322,7 @@ python3 3_generate_clmbr_representations.py \
     --path_to_database ../EHRSHOT_ASSETS/femr/extract \
     --path_to_labeled_featurized_data ../EHRSHOT_ASSETS/benchmark \
     --path_to_save ../EHRSHOT_ASSETS/clmbr_reps \
-    --labeling_function guo_los
+    --labeler guo_los
 ```
 
 To run it for all tasks automatically, run the following Bash script:
@@ -338,7 +338,7 @@ Note that we provide the exact `k`-shots used in our paper with our data release
 ```bash
 python3 4_generate_shot.py \
     --path_to_data ../EHRSHOT_ASSETS \
-    --labeling_function guo_los \
+    --labeler guo_los \
     --num_replicates 1 \
     --path_to_save ../EHRSHOT_ASSETS/benchmark \
     --shot_strat few
@@ -355,7 +355,7 @@ sbatch 4_generate_shot_slurm.sh
 ```bash
 python3 5_eval.py \
     --path_to_data ../EHRSHOT_ASSETS \
-    --labeling_function guo_los \
+    --labeler guo_los \
     --num_replicates 5 \
     --model_head logistic \
     --is_tune_hyperparams \
