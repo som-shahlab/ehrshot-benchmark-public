@@ -32,7 +32,7 @@ BASE_MODELS: List[str] = list(MODEL_2_NAME.keys())
 # Map each base model to a set of heads to test
 BASE_MODEL_2_HEADS: Dict[str, List[str]] = {
     'count' : ['gbm', 'lr_lbfgs', 'rf', ], 
-    'clmbr' : ['lr_lbfgs', ],
+    'clmbr' : ['lr_lbfgs', 'gbm', 'rf', ],
     'gpt2-base-v8_chunk:last_embed:last' : ['gbm', 'lr_lbfgs', 'rf', ], 
     'bert-base-v8_chunk:last_embed:last' : ['gbm', 'lr_lbfgs', 'rf', ], 
 }
@@ -145,7 +145,8 @@ XGB_PARAMS = {
 }
 LR_PARAMS = {
     "C": [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 1e2, 1e3, 1e4, 1e5, 1e6], 
-    "penalty": ['l2']
+    "penalty": ['l2'],
+    'max_iter' : [5000],
 }
 RF_PARAMS = {
     'n_estimators': [10, 20, 50, 100, 300],
@@ -164,13 +165,9 @@ SCORE_MODEL_HEAD_2_COLOR = {
             'rf' : 'tab:orange',
         },
         'clmbr' : {
-            'lr_femr' : 'tab:blue',
-        },
-        'gpt2-base-v8_chunk:last_embed:last' : {
-            'lr_lbfgs' : 'tab:purple',
-        },
-        'bert-base-v8_chunk:last_embed:last' : {
-            'lr_lbfgs' : 'tab:olive',
+            'gbm' : 'aqua',
+            'lr_lbfgs' : 'tab:blue',
+            'rf' : 'darkblue',
         },
     },
     'auprc' : {
@@ -180,13 +177,9 @@ SCORE_MODEL_HEAD_2_COLOR = {
             'rf' : 'tab:orange',
         },
         'clmbr' : {
-            'lr_femr' : 'tab:blue',
-        },
-        'gpt2-base-v8_chunk:last_embed:last' : {
-            'lr_lbfgs' : 'tab:purple',
-        },
-        'bert-base-v8_chunk:last_embed:last' : {
-            'lr_lbfgs' : 'tab:olive',
+            'gbm' : 'aqua',
+            'lr_lbfgs' : 'tab:blue',
+            'rf' : 'darkblue',
         },
     },
 }
@@ -259,7 +252,7 @@ def join_labels_clmbr(features: Dict[str, np.ndarray], labels: List[meds.Label])
                 break
 
             current_feature_idx += 1
-            
+    
     return {
         "patient_ids": patient_ids[feature_indices],
         "times": times[feature_indices],

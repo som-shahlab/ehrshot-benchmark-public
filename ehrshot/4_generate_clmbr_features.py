@@ -48,15 +48,15 @@ def compute_features(
     if device:
         model = model.to(device)
 
-    if False:
+    if True:
         batches = processor.convert_dataset(
             filtered_data, tokens_per_batch=tokens_per_batch, min_patients_per_batch=1, num_proc=num_proc
         )
-        with open('/share/pi/nigam/mwornow/batches_32k.pt', 'wb') as fd:
+        with open('/share/pi/nigam/mwornow/batches_32k-femr.0.2.0.pt', 'wb') as fd:
             pickle.dump(batches, fd)
     else:
         print("Loading batch from disk...")
-        batches = pickle.load(open('/share/pi/nigam/mwornow/batches_32k.pt', 'rb'))
+        batches = pickle.load(open('/share/pi/nigam/mwornow/batches_32k-femr.0.2.0.pt', 'rb'))
 
     batches.set_format("pt")
 
@@ -65,20 +65,22 @@ def compute_features(
     all_representations = []
 
     for batch in tqdm(batches, total=len(batches)):
-        batch = processor.collate([batch])["batch"]
-        # batch = self.creator.cleanup_batch([batch]).unsqueeze(dim=0)
-        # batch = batch.to(device)
-        for key, val in batch.items():
-            if isinstance(val, torch.Tensor):
-                batch[key] = batch[key].to(device)
-        for key, val in batch['transformer'].items():
-            if isinstance(val, torch.Tensor):
-                batch['transformer'][key] = batch['transformer'][key].to(device)
+        # FEMR 0.2.3 only ==> 
+        # batch = processor.collate([batch])["batch"]
+        # for key, val in batch.items():
+        #     if isinstance(val, torch.Tensor):
+        #         batch[key] = batch[key].to(device)
+        # for key, val in batch['transformer'].items():
+        #     if isinstance(val, torch.Tensor):
+        #         batch['transformer'][key] = batch['transformer'][key].to(device)
+        # with torch.no_grad():
+        #     _, result = model(batch, return_reprs=True)
+        #     all_patient_ids.append(result["patient_ids"].cpu().numpy())
+        #     all_feature_times.append(result["timestamps"].cpu().numpy())
+        #     all_representations.append(result["representations"].cpu().numpy())
+        # FEMR 0.2.0 only ==> 
         with torch.no_grad():
-            _, result = model(batch, return_reprs=True)
-            all_patient_ids.append(result["patient_ids"].cpu().numpy())
-            all_feature_times.append(result["timestamps"].cpu().numpy())
-            all_representations.append(result["representations"].cpu().numpy())
+            all_patient_ids, all_feature_times, all_representations = model(batch)
 
     return {
         "patient_ids": np.concatenate(all_patient_ids),
@@ -108,6 +110,9 @@ if __name__ == "__main__":
 
     # Load consolidated labels across all patients for all tasks
     labels: List[meds.Label] = convert_csv_labels_to_meds(path_to_labels_csv)
+    
+    dataset = dataset.select([0, 1])
+    labels = [ x for x in labels if x['patient_id'] in dataset['patient_id'] ]
     
     # Load model
     print("Loading model", model_name, "to device", device)

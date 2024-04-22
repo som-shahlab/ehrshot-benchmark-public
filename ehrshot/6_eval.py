@@ -170,6 +170,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--labeler", required=True, type=str, help="Labeling function for which we will create k-shot samples.", choices=LABELERS, )
     parser.add_argument("--num_threads", type=int, help="Number of threads to use")
     parser.add_argument("--is_force_refresh", action='store_true', default=False, help="Number of threads to use")
+    parser.add_argument("--is_debug", action='store_true', default=False, help="Number of threads to use")
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -185,6 +186,7 @@ if __name__ == "__main__":
     path_to_shots: str = os.path.join(path_to_labels_dir, labeler, f"all_shots_data.json")
     path_to_output_file: str = os.path.join(path_to_output_dir, labeler, f'all_results.csv')
     is_force_refresh: bool = args.is_force_refresh
+    is_debug: bool = args.is_debug
     os.makedirs(os.path.dirname(path_to_output_file), exist_ok=True)
     
     assert os.path.exists(args.path_to_dataset), f"Path to dataset does not exist: {args.path_to_dataset}"
@@ -239,6 +241,11 @@ if __name__ == "__main__":
     results: List[Dict[str, Any]] = []
     
     # For each base model we are evaluating...
+    
+    # TODO - remove
+    if is_debug:
+        BASE_MODELS = ['clmbr',]
+        
     for model in BASE_MODELS:
         model_heads: List[str] = BASE_MODEL_2_HEADS[model]
         # For each head we can add to the top of this model...
@@ -276,6 +283,10 @@ if __name__ == "__main__":
         
                 ks: List[int] = sorted([ int(x) for x in few_shots_dict[sub_task].keys() ])
                 
+                # TODO - remove
+                if is_debug:
+                    ks = [ -1 ]
+                
                 # For each k-shot sample we are evaluating...
                 for k in ks:
                     replicates: List[int] = sorted([ int(x) for x in few_shots_dict[sub_task][str(k)].keys() ])
@@ -311,7 +322,8 @@ if __name__ == "__main__":
                                 'score' : score_name,
                                 'value' : score_value,
                             })
-
+    if is_debug:
+        exit()
     logger.info(f"Saving results to: {path_to_output_file}")
     df: pd.DataFrame = pd.DataFrame(results)
     logger.info(f"Added {df.shape[0] - (df_existing.shape[0] if df_existing is not None else 0)} rows")
