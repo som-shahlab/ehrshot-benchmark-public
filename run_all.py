@@ -80,7 +80,7 @@ Correct?
 """
     
 command = (
-    'python3 ehrshot/5_generate_clmbr_features.py'
+    'python3 ehrshot/3_generate_clmbr_features.py'
 )
 print(command)
 os.system(command)
@@ -102,7 +102,7 @@ for task in TASKS:
             'python3 ehrshot/6_generate_shots.py'
             ' --path_to_database EHRSHOT_ASSETS/femr/extract'
             ' --path_to_labels_dir EHRSHOT_ASSETS/custom_benchmark'
-            f' --labeling_function {task}'
+            f' --labeler {task}'
             f' --shot_strat {shot_strat}'
             f' --num_replicates {num_replicates}'
         )
@@ -127,7 +127,7 @@ for task in TASKS:
             f' --path_to_labels_dir EHRSHOT_ASSETS/custom_benchmark'
             f' --path_to_features_dir EHRSHOT_ASSETS/custom_features'
             f' --path_to_output_dir EHRSHOT_ASSETS/results'
-            f' --labeling_function {task}'
+            f' --labeler {task}'
             f' --shot_strat {shot_strat}'
             f' --num_threads {num_threads}'
         )

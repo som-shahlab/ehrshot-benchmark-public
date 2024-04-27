@@ -6,7 +6,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import meds
 import pandas as pd
 import numpy as np
-import femr.featurizers
+# TODO - uncomment
+# import femr.featurizers
 import femr
 from loguru import logger
 from tqdm import tqdm

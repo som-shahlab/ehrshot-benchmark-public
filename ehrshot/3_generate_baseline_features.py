@@ -45,7 +45,6 @@ if __name__ == "__main__":
 
     # Load EHRSHOT dataset
     dataset = datasets.Dataset.from_parquet(path_to_dataset)
-    
     patient_index: PatientIndex = PatientIndex(dataset)
     
     # Load ontology

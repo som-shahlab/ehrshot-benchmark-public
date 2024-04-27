@@ -30,33 +30,30 @@ def compute_features(
     num_proc: int = 1,
     tokens_per_batch: int = 1024,
     device: Optional[torch.device] = None,
-    ontology: Optional[femr.ontology.Ontology] = None,
+    ontology = None,
 ) -> Dict[str, np.ndarray]:
     """
     Taken from: https://github.com/som-shahlab/femr/blob/6b2f778afd3a346d0beef3098b1868912d870df4/src/femr/models/transformer.py#L324
     """
     task = femr.models.tasks.LabeledPatientTask(labels)
-
     index = femr.index.PatientIndex(dataset, num_proc=num_proc)
-
     model = femr.models.transformer.FEMRModel.from_pretrained(model_path, task_config=task.get_task_config())
     tokenizer = femr.models.tokenizer.FEMRTokenizer.from_pretrained(model_path, ontology=ontology)
     processor = femr.models.processor.FEMRBatchProcessor(tokenizer, task=task)
-
     filtered_data = task.filter_dataset(dataset, index)
 
     if device:
         model = model.to(device)
 
-    if True:
+    if False:
         batches = processor.convert_dataset(
             filtered_data, tokens_per_batch=tokens_per_batch, min_patients_per_batch=1, num_proc=num_proc
         )
-        with open('/share/pi/nigam/mwornow/batches_32k-femr.0.2.0.pt', 'wb') as fd:
+        with open('/share/pi/nigam/mwornow/batches_32k.pt', 'wb') as fd:
             pickle.dump(batches, fd)
     else:
         print("Loading batch from disk...")
-        batches = pickle.load(open('/share/pi/nigam/mwornow/batches_32k-femr.0.2.0.pt', 'rb'))
+        batches = pickle.load(open('/share/pi/nigam/mwornow/batches_32k.pt', 'rb'))
 
     batches.set_format("pt")
 
@@ -65,22 +62,18 @@ def compute_features(
     all_representations = []
 
     for batch in tqdm(batches, total=len(batches)):
-        # FEMR 0.2.3 only ==> 
-        # batch = processor.collate([batch])["batch"]
-        # for key, val in batch.items():
-        #     if isinstance(val, torch.Tensor):
-        #         batch[key] = batch[key].to(device)
-        # for key, val in batch['transformer'].items():
-        #     if isinstance(val, torch.Tensor):
-        #         batch['transformer'][key] = batch['transformer'][key].to(device)
-        # with torch.no_grad():
-        #     _, result = model(batch, return_reprs=True)
-        #     all_patient_ids.append(result["patient_ids"].cpu().numpy())
-        #     all_feature_times.append(result["timestamps"].cpu().numpy())
-        #     all_representations.append(result["representations"].cpu().numpy())
-        # FEMR 0.2.0 only ==> 
+        batch = processor.collate([batch])["batch"]
+        for key, val in batch.items():
+            if isinstance(val, torch.Tensor):
+                batch[key] = batch[key].to(device)
+        for key, val in batch['transformer'].items():
+            if isinstance(val, torch.Tensor):
+                batch['transformer'][key] = batch['transformer'][key].to(device)
         with torch.no_grad():
-            all_patient_ids, all_feature_times, all_representations = model(batch)
+            _, result = model(batch, return_reprs=True)
+            all_patient_ids.append(result["patient_ids"].cpu().numpy())
+            all_feature_times.append(result["timestamps"].cpu().numpy())
+            all_representations.append(result["representations"].cpu().numpy())
 
     return {
         "patient_ids": np.concatenate(all_patient_ids),
@@ -101,7 +94,8 @@ if __name__ == "__main__":
     assert os.path.exists(path_to_labels_csv), f"Path to labels CSV does not exist: {path_to_labels_csv}"
     assert os.path.exists(path_to_features_dir), f"Path to features directory does not exist: {path_to_features_dir}"
 
-    model_name: str = "StanfordShahLab/clmbr-t-base"
+    # model_name: str = "StanfordShahLab/clmbr-t-base"
+    model_name = '/share/pi/nigam/mwornow/ehrshot-benchmark/clmbr-t-base-weights/'
 
     # Load EHRSHOT dataset
     dataset = datasets.Dataset.from_parquet(path_to_dataset)
@@ -111,8 +105,8 @@ if __name__ == "__main__":
     # Load consolidated labels across all patients for all tasks
     labels: List[meds.Label] = convert_csv_labels_to_meds(path_to_labels_csv)
     
-    dataset = dataset.select([0, 1])
-    labels = [ x for x in labels if x['patient_id'] in dataset['patient_id'] ]
+    # dataset = dataset.select([0, 1])
+    # labels = [ x for x in labels if x['patient_id'] in dataset['patient_id'] ]
     
     # Load model
     print("Loading model", model_name, "to device", device)
@@ -121,7 +115,6 @@ if __name__ == "__main__":
     # Generate features
     tokens_per_batch = 32 * 1024
     print("Generating batches of size", tokens_per_batch)
-    # breakpoint()
     results: Dict[str, Any] = compute_features(dataset, model_name, labels, ontology=None, num_proc=num_threads, tokens_per_batch=tokens_per_batch, device=device)
 
     # Save results
