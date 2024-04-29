@@ -8,7 +8,7 @@
 #SBATCH --cpus-per-task=20
 
 python3 ../7_make_figures.py \
-    --model_heads "[('count', 'lr_lbfgs'), ('count', 'gbm'), ('count', 'rf'), ('clmbr', 'lr_lbfgs'), ('clmbr', 'gbm'), ('clmbr', 'rf')]" 
+    --model_heads "[('count', 'lr_lbfgs'), ('count', 'gbm'), ('count', 'rf'), ('clmbr', 'lr_lbfgs'), ('clmbr_custom_batch', 'lr_lbfgs')]" 
 
 # --model_heads "[('clmbr', 'lr_femr'), ('count', 'lr_lbfgs'), ('count', 'gbm'), ('count', 'rf'), ('gpt2-base', 'lr_lbfgs')]" \
     # --model_heads "[('gpt2-base', 'lr_lbfgs'), ('gpt2-base', 'gbm'), ('gpt2-base', 'rf')]" \

@@ -283,7 +283,6 @@ if __name__ == "__main__":
         
                 ks: List[int] = sorted([ int(x) for x in few_shots_dict[sub_task].keys() ])
                 
-                # TODO - remove
                 if is_debug:
                     ks = [ -1 ]
                 
@@ -325,6 +324,12 @@ if __name__ == "__main__":
     if is_debug:
         exit()
     logger.info(f"Saving results to: {path_to_output_file}")
+    
+    # TODO - remove
+    import pickle
+    with open(path_to_output_file + '.pkl', 'wb') as fd:
+        pickle.dump(results, fd)
+
     df: pd.DataFrame = pd.DataFrame(results)
     logger.info(f"Added {df.shape[0] - (df_existing.shape[0] if df_existing is not None else 0)} rows")
     df.to_csv(path_to_output_file)

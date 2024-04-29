@@ -48,15 +48,18 @@ if __name__ == "__main__":
     patient_index: PatientIndex = PatientIndex(dataset)
     
     # Load ontology
-    if False:
-        print("Loading ontology...")
+    path_to_pruned_ontology = get_rel_path(__file__, "../assets/ontology_pruned.pkl")
+    print("Start | Loading ontology...")
+    if not os.path.exists(path_to_pruned_ontology):
         ontology: Ontology = pickle.load(open(path_to_ontology, "rb"))
-        print("Loaded ontology")
+        print("Start | Pruning ontology...")
         ontology.prune_to_dataset(dataset, num_threads, prune_all_descriptions=True)
-        with open('./ontology_pruned.pkl', 'wb') as f:
+        with open(path_to_pruned_ontology, 'wb') as f:
             pickle.dump(ontology, f)
+        print("Finish | Pruning ontology...")
     else:
-        ontology = pickle.load(open('./ontology_pruned.pkl', 'rb'))
+        ontology = pickle.load(open(path_to_pruned_ontology, 'rb'))
+    print("Finish | Loading ontology...")
     
     # Load consolidated labels across all patients for all tasks
     labels: List[meds.Label] = convert_csv_labels_to_meds(path_to_labels_csv)
@@ -68,23 +71,24 @@ if __name__ == "__main__":
     featurizer_age_count = FeaturizerList([age, count])
 
     # Preprocessing the featurizers -- this includes processes such as normalizing age
-    if True:
-        logger.info("Start | Preprocess featurizers")
+    path_to_featurizer = os.path.join(path_to_features_dir, f"featurizer_age_count__ontexp={is_ontology_expansion}__pruned.pkl")
+    logger.info("Start | Preprocessing featurizers")
+    if not os.path.exists(path_to_featurizer):
         featurizer_age_count.preprocess_featurizers( dataset, patient_index, labels, num_proc=num_threads )
-        logger.info("Finish | Preprocess featurizers")
-        with open(f'./featurizer_age_count__ont_exp_{is_ontology_expansion}__pruned.pkl', 'wb') as f:
+        with open(path_to_featurizer, 'wb') as f:
             pickle.dump(featurizer_age_count, f)
     else:
-        with open(f'./featurizer_age_count__ont_exp_{is_ontology_expansion}__pruned.pkl', 'rb') as f:
+        with open(path_to_featurizer, 'rb') as f:
             featurizer_age_count = pickle.load(f)
-        
+    logger.info("Finish | Preprocess featurizers")
+
     # Run actual featurization for each patient
     logger.info("Start | Featurize patients")
     results: Dict[str, Any] = featurizer_age_count.featurize(dataset, patient_index, labels, num_proc=num_threads)
     logger.info("Finish | Featurize patients")
 
     # Save results
-    path_to_output_file = os.path.join(path_to_features_dir, f"count_features__ont_exp_{is_ontology_expansion}__pruned.pkl")
+    path_to_output_file = os.path.join(path_to_features_dir, f"count_features__ontexp={is_ontology_expansion}__pruned.pkl")
     logger.info(f"Saving results to `{path_to_output_file}`")
     with open(path_to_output_file, 'wb') as f:
         pickle.dump(results, f)

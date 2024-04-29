@@ -230,7 +230,10 @@ def plot_one_task_group_box_plot(df: pd.DataFrame,
     ks: List[int] = sorted(df['k'].unique().tolist())
     
     # Create a fake `k` for the full data which is 2x the max `k` in the few-shot data
-    assert -1 in ks, f"Full data not present in {task_group} for {score}"
+    if -1 not in ks:
+        print(f"ERROR -- Full data not present in {task_group} for {score}")
+        return
+
     ks.remove(-1)
     full_data_k: int = 2 * max(ks)
     df.loc[df['k'] == -1, 'k'] = full_data_k

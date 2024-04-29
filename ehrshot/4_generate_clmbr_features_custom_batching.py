@@ -26,43 +26,25 @@ def parse_args() -> argparse.Namespace:
 def compute_features(
     dataset: datasets.Dataset,
     model_path: str,
-    labels: List[meds.Label],
-    num_proc: int = 1,
-    tokens_per_batch: int = 1024,
     device: Optional[torch.device] = None,
     ontology = None,
 ) -> Dict[str, np.ndarray]:
     """
     Taken from: https://github.com/som-shahlab/femr/blob/6b2f778afd3a346d0beef3098b1868912d870df4/src/femr/models/transformer.py#L324
     """
-    task = femr.models.tasks.LabeledPatientTask(labels)
-    index = femr.index.PatientIndex(dataset, num_proc=num_proc)
-    model = femr.models.transformer.FEMRModel.from_pretrained(model_path, task_config=task.get_task_config())
+    model = femr.models.transformer.FEMRModel.from_pretrained(model_path)
     tokenizer = femr.models.tokenizer.FEMRTokenizer.from_pretrained(model_path, ontology=ontology)
-    processor = femr.models.processor.FEMRBatchProcessor(tokenizer, task=task)
-    filtered_data = task.filter_dataset(dataset, index)
+    processor = femr.models.processor.FEMRBatchProcessor(tokenizer)
 
     if device:
         model = model.to(device)
-
-    if True:
-        batches = processor.convert_dataset(
-            filtered_data, tokens_per_batch=tokens_per_batch, min_patients_per_batch=1, num_proc=num_proc
-        )
-        with open('/share/pi/nigam/mwornow/batches_32k.pt', 'wb') as fd:
-            pickle.dump(batches, fd)
-    else:
-        print("Loading batch from disk...")
-        batches = pickle.load(open('/share/pi/nigam/mwornow/batches_32k.pt', 'rb'))
-
-    batches.set_format("pt")
-
+        
     all_patient_ids = []
     all_feature_times = []
     all_representations = []
-
-    for batch in tqdm(batches, total=len(batches)):
-        batch = processor.collate([batch])["batch"]
+    print("Running inference...")
+    for patient in tqdm(dataset, total=len(dataset)):
+        batch = processor.collate([processor.convert_patient(patient, tensor_type="pt")])['batch']
         for key, val in batch.items():
             if isinstance(val, torch.Tensor):
                 batch[key] = batch[key].to(device)
@@ -70,7 +52,7 @@ def compute_features(
             if isinstance(val, torch.Tensor):
                 batch['transformer'][key] = batch['transformer'][key].to(device)
         with torch.no_grad():
-            _, result = model(batch, return_reprs=True)
+            __, result = model(batch)
             all_patient_ids.append(result["patient_ids"].cpu().numpy())
             all_feature_times.append(result["timestamps"].cpu().numpy())
             all_representations.append(result["representations"].cpu().numpy())
@@ -104,20 +86,15 @@ if __name__ == "__main__":
     # Load consolidated labels across all patients for all tasks
     labels: List[meds.Label] = convert_csv_labels_to_meds(path_to_labels_csv)
     
-    # dataset = dataset.select([0, 1])
-    # labels = [ x for x in labels if x['patient_id'] in dataset['patient_id'] ]
-    
     # Load model
     print("Loading model", model_name, "to device", device)
     model = femr.models.transformer.FEMRModel.from_pretrained(model_name)
     
     # Generate features
-    tokens_per_batch = 64 * 1024
-    print("Generating batches of size", tokens_per_batch)
-    results: Dict[str, Any] = compute_features(dataset, model_name, labels, ontology=None, num_proc=num_threads, tokens_per_batch=tokens_per_batch, device=device)
+    results: Dict[str, Any] = compute_features(dataset, model_name, device=device)
 
     # Save results
-    path_to_output_file = os.path.join(path_to_features_dir, f"clmbr_features.pkl")
+    path_to_output_file = os.path.join(path_to_features_dir, f"clmbr_custom_batch_features.pkl")
     logger.info(f"Saving results to `{path_to_output_file}`")
     with open(path_to_output_file, 'wb') as f:
         pickle.dump(results, f)

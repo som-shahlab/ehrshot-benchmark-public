@@ -30,5 +30,5 @@ labelers=(
 for labeler in "${labelers[@]}"
 do
     python3 ../1_generate_labels.py \
-        --labeler ${labeler}
+        --labeler ${labeler} &
 done

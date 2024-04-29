@@ -4,7 +4,7 @@
 #SBATCH --error=logs/6_eval__helper_%A.err
 #SBATCH --time=2-00:00:00
 #SBATCH --partition=normal,gpu
-#SBATCH --mem=240G
+#SBATCH --mem=350G
 #SBATCH --cpus-per-task=20
 #SBATCH --exclude=secure-gpu-3,secure-gpu-4,secure-gpu-5,secure-gpu-6,secure-gpu-7
 

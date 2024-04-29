@@ -21,6 +21,7 @@ SPLIT_VAL_CUTOFF: int = 85
 MODEL_2_NAME: Dict[str, str] = {
     'count' : 'Count-based',
     'clmbr' : 'CLMBR',
+    'clmbr_custom_batch' : 'CLMBR Batch',
     # 'gpt2-base' : 'GPT2-base',
     # 'gpt2-medium' : 'GP2-medium',
     # 'gpt2-large' : 'GP2-large',
@@ -34,6 +35,7 @@ BASE_MODELS: List[str] = list(MODEL_2_NAME.keys())
 BASE_MODEL_2_HEADS: Dict[str, List[str]] = {
     'count' : ['gbm', 'lr_lbfgs', 'rf', ], 
     'clmbr' : ['lr_lbfgs', 'gbm', 'rf', ],
+    'clmbr_custom_batch' : ['lr_lbfgs', 'gbm', 'rf', ],
     'gpt2-base-v8_chunk:last_embed:last' : ['gbm', 'lr_lbfgs', 'rf', ], 
     'bert-base-v8_chunk:last_embed:last' : ['gbm', 'lr_lbfgs', 'rf', ], 
 }
@@ -162,25 +164,35 @@ SCORE_MODEL_HEAD_2_COLOR = {
     'auroc' : {
         'count' : {
             'gbm' : 'tab:red',
-            'lr_lbfgs' : 'tab:green',
+            'lr_lbfgs' : 'aqua',
             'rf' : 'tab:orange',
         },
         'clmbr' : {
-            'gbm' : 'aqua',
+            'gbm' : 'tab:green',
             'lr_lbfgs' : 'tab:blue',
             'rf' : 'darkblue',
+        },
+        'clmbr_custom_batch' : {
+            'gbm' : 'purple',
+            'lr_lbfgs' : 'indigo',
+            'rf' : 'pink',
         },
     },
     'auprc' : {
         'count' : {
             'gbm' : 'tab:red',
-            'lr_lbfgs' : 'tab:green',
+            'lr_lbfgs' : 'aqua',
             'rf' : 'tab:orange',
         },
         'clmbr' : {
-            'gbm' : 'aqua',
+            'gbm' : 'tab:green',
             'lr_lbfgs' : 'tab:blue',
             'rf' : 'darkblue',
+        },
+        'clmbr_custom_batch' : {
+            'gbm' : 'purple',
+            'lr_lbfgs' : 'indigo',
+            'rf' : 'pink',
         },
     },
 }
@@ -322,11 +334,7 @@ def get_labels_and_features(labels: List[meds.Label], value_type: str = 'boolean
     # and align the label times with the featurization times
     featurizations: Dict[str, np.ndarray] = {}
     for model in BASE_MODELS:
-        if model == 'count':
-            # TODO - remove
-            path_to_feats_file: str = os.path.join(path_to_features_dir, 'count_features__ont_exp_False__pruned.pkl')
-        else:
-            path_to_feats_file: str = os.path.join(path_to_features_dir, f'{model}_features.pkl')
+        path_to_feats_file: str = os.path.join(path_to_features_dir, f'{model}_features.pkl')
         assert os.path.exists(path_to_feats_file), f'Path to file containing `{model}` features does not exist at this path: {path_to_feats_file}. Maybe you forgot to run `generate_features.py` first?'
 
         with open(path_to_feats_file, 'rb') as f:
@@ -339,6 +347,10 @@ def get_labels_and_features(labels: List[meds.Label], value_type: str = 'boolean
                 assert np.all(joined_features['patient_ids'] == label_patient_ids)
                 assert np.all(joined_features['times'] == label_times)
             elif model == 'clmbr':
+                joined_features: Dict[str, np.ndarray] = join_labels_clmbr(features, labels)
+                assert np.all(joined_features['patient_ids'] == label_patient_ids)
+            elif model == 'clmbr_custom_batch':
+                # TODO - remove
                 joined_features: Dict[str, np.ndarray] = join_labels_clmbr(features, labels)
                 assert np.all(joined_features['patient_ids'] == label_patient_ids)
             else:
@@ -432,8 +444,11 @@ def filter_df(df: pd.DataFrame,
         df = df[df['sub_task'].isin(sub_tasks)]
     if model_heads:
         mask = [ False ] * df.shape[0]
+        if len(mask) == 0:
+            # to avoid pandas warning
+            return df
         for model_head in model_heads:
-            mask = mask | ((df['model'] == model_head[0]) & (df['head'] == model_head[1]))
+            mask = mask | ((df['model'] == model_head[0]).astype(bool).values & (df['head'] == model_head[1]).astype(bool).values)
         df = df[mask]
     return df
 

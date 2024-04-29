@@ -7,7 +7,7 @@
 path_to_output_dir='../../assets/outputs/'
 
 labelers=(
-    # "chexpert" # CheXpert first b/c slowest
+    # "chexpert" # TODO - CheXpert first b/c slowest
     "guo_los"
     "guo_readmission"
     "guo_icu"
@@ -18,11 +18,11 @@ labelers=(
     "new_lupus"
     "new_acutemi"
     # Labs take long time -- need more GB
-    "lab_thrombocytopenia"
-    "lab_hyperkalemia"
-    "lab_hyponatremia"
-    "lab_anemia"
-    "lab_hypoglycemia" # will OOM at 200G on `gpu` partition
+    # "lab_thrombocytopenia"
+    # "lab_hyperkalemia"
+    # "lab_hyponatremia"
+    # "lab_anemia"
+    # "lab_hypoglycemia" # will OOM at 200G on `gpu` partition
 )
 num_threads=20
 
